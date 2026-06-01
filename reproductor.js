@@ -7,91 +7,202 @@ const rl = readline.createInterface({ input: process.stdin, output: process.stdo
 const pregunta = (texto) => new Promise((resolve) => rl.question(texto, resolve));
 
 global.videoCapturado = null;
+global.popupDetectado = false;
 
 // ============================================================================
-// SELECTORES Y GENERADORES DE URL POR DOMINIO
+// FUNCIONES DE BYPASS Y ESTABILIDAD
 // ============================================================================
-function obtenerSelectorBuscador(dominio) {
+async function esperarBypass(page, maxIntentos = 15) {
+    for (let i = 1; i <= maxIntentos; i++) {
+        try {
+            const titulo = await page.title().catch(() => '');
+            const url = page.url();
+            const esDesafio = titulo.toLowerCase().includes('just a moment') || url.includes('challenges.cloudflare.com');
+            if (esDesafio) {
+                console.log(`⏳ [${i}/${maxIntentos}] Esperando bypass de seguridad...`);
+                await new Promise(r => setTimeout(r, 3000));
+            } else if (url !== 'about:blank' && !url.startsWith('about:') && url.trim().length > 10) {
+                return true;
+            }
+        } catch (e) {
+            await new Promise(r => setTimeout(r, 2000));
+        }
+    }
+    return false;
+}
+
+async function clickInteligente(page, selector) {
+    try {
+        await page.waitForSelector(selector, { timeout: 8000 });
+        await page.evaluate((sel) => {
+            const el = document.querySelector(sel);
+            if (el) el.scrollIntoView({ block: 'center', inline: 'center' });
+        }, selector);
+
+        global.popupDetectado = false;
+        await page.click(selector);
+    } catch (error) {
+        try {
+            await page.evaluate((sel) => {
+                const el = document.querySelector(sel);
+                if (el) el.click();
+            }, selector);
+        } catch (e) {
+            throw new Error(`Selector inalcanzable: ${selector}`);
+        }
+    }
+    await new Promise(r => setTimeout(r, 1500));
+}
+
+// ============================================================================
+// ESCÁNER Y SELECCIÓN DE RECETAS EN EL DISCO
+// ============================================================================
+function cargarRecetaAutomatica() {
+    const configsDir = path.join(__dirname, 'configs');
+    if (!fs.existsSync(configsDir)) {
+        fs.mkdirSync(configsDir, { recursive: true });
+        return null;
+    }
+
+    const archivos = fs.readdirSync(configsDir).filter(f => f.endsWith('_receta.json'));
+
+    if (archivos.length === 0) {
+        return null;
+    }
+
+    // Si solo hay una receta, la usamos de inmediato
+    if (archivos.length === 1) {
+        const recetaPath = path.join(configsDir, archivos[0]);
+        console.log(`\n📂 Usando única receta encontrada: ${archivos[0]}`);
+        return JSON.parse(fs.readFileSync(recetaPath, 'utf8'));
+    }
+
+    return null;
+}
+
+async function elegirRecetaInteractiva() {
+    const configsDir = path.join(__dirname, 'configs');
+    const archivos = fs.readdirSync(configsDir).filter(f => f.endsWith('_receta.json'));
+
+    console.log(`\n======================================================`);
+    console.log(`📂 RECETAS DISPONIBLES EN EL DISCO`);
+    console.log(`======================================================`);
+    archivos.forEach((file, idx) => {
+        console.log(`  ${idx + 1}. ${file.replace('_receta.json', '')}`);
+    });
+    console.log(`======================================================`);
+
+    const seleccion = parseInt(await pregunta("\n👉 Selecciona una receta: "), 10) - 1;
+    if (seleccion >= 0 && seleccion < archivos.length) {
+        const recetaPath = path.join(configsDir, archivos[seleccion]);
+        return JSON.parse(fs.readFileSync(recetaPath, 'utf8'));
+    }
+
+    console.log("❌ Selección inválida. Usando la primera receta por defecto.");
+    return JSON.parse(fs.readFileSync(path.join(configsDir, archivos[0]), 'utf8'));
+}
+
+// ============================================================================
+// RESOLUCIÓN DE SELECTOR DE BÚSQUEDA Y TRASLACIÓN DE URL DE EPISODIOS
+// ============================================================================
+function obtenerSelectorBuscadorDinamico(receta, dominio) {
+    const pasoType = receta.pasos ? receta.pasos.find(p => p.tipo === 'TYPE') : null;
+    if (pasoType && pasoType.selector) {
+        return pasoType.selector;
+    }
+    // Fallbacks si la receta está vacía
     if (dominio.includes('jkanime')) return '#buscanime';
     if (dominio.includes('animeflv')) return 'input[name="q"]';
     if (dominio.includes('cuevana')) return '#keysss';
-    return 'input[type="search"], input[name="q"]'; // Fallback universal
+    return 'input[type="search"], input[name="q"]';
 }
 
-function generarUrlEpisodio(showUrl, capitulo, dominio) {
-    const urlObj = new URL(showUrl);
-    const slug = urlObj.pathname.split('/').filter(p => p.length > 0).pop();
-    const origin = urlObj.origin;
-
-    if (dominio.includes('animeflv')) {
-        // De: animeflv.net/anime/bleach-tv -> ver/bleach-tv-1
-        return `${origin}/ver/${slug}-${capitulo}`;
-    }
+function generarUrlEpisodioDinamica(showUrl, capitulo, receta) {
+    const urls = receta.historialNavegacion.map(h => h.url);
     
-    if (dominio.includes('jkanime')) {
-        // De: jkanime.net/one-piece/ -> jkanime.net/one-piece/5/
-        const base = showUrl.endsWith('/') ? showUrl : showUrl + '/';
-        return `${base}${capitulo}/`;
-    }
+    // Buscar el primer url en el historial grabado que sea de un episodio (que termine en número)
+    const urlEpisodioGrabado = urls.find(url => url.match(/[-/](\d+)\/?$/));
+    if (!urlEpisodioGrabado) return showUrl; // Si no hay episodios grabados, asumimos película
 
-    if (dominio.includes('cuevana')) {
-        const base = showUrl.endsWith('/') ? showUrl : showUrl + '/';
-        return `${base}${capitulo}/`;
-    }
+    const matchEp = urlEpisodioGrabado.match(/[-/](\d+)\/?$/);
+    const nroGrabado = matchEp[1]; // Ejemplo: "1"
 
-    return showUrl;
+    // Encontrar la URL de la ficha grabada (no termina en número y tiene al menos 3 partes)
+    const urlFichaGrabada = urls.find(url => {
+        return !url.match(/[-/](\d+)\/?$/) && 
+               url.split('/').filter(p => p.length > 0).length >= 3 && 
+               !url.includes('/buscar') && !url.includes('/explorar') && !url.includes('/browse');
+    });
+    if (!urlFichaGrabada) return showUrl;
+
+    const slugGrabado = urlFichaGrabada.split('/').filter(p => p.length > 0).pop();
+    const slugActual = showUrl.split('/').filter(p => p.length > 0).pop();
+
+    // Reemplazamos dinámicamente el slug grabado por el slug buscado, y el número grabado por el nuevo capítulo
+    let urlFinal = urlEpisodioGrabado
+        .replace(slugGrabado, slugActual)
+        .replace(new RegExp(`([-|/])${nroGrabado}(/)?$`), `$1${capitulo}$2`);
+
+    return urlFinal;
 }
 
 // ============================================================================
-// BUSCADOR DE COINCIDENCIAS EN LOS RESULTADOS DE BÚSQUEDA
+// SELECCIÓN INTERACTIVA DE SHOWS EN LA PÁGINA DE RESULTADOS
 // ============================================================================
-async function buscarMejorCoincidencia(page, keyword, dominio) {
-    console.log(`🔎 Buscando coincidencia para: '${keyword}' en los resultados...`);
+async function elegirCoincidenciaInteractiva(page, keyword, dominio) {
+    console.log(`\n🔎 Buscando resultados para: '${keyword}'...`);
     
     const enlaces = await page.evaluate(() => {
         return Array.from(document.querySelectorAll('a')).map(a => ({
             href: a.href,
             text: a.innerText.trim()
-        }));
+        })).filter(a => a.text.length > 2);
     });
 
     const keywordLimpia = keyword.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); 
-    const slugKeyword = keywordLimpia.replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
-
-    let mejorCoincidencia = null;
+    const resultadosMap = new Map();
 
     for (const enlace of enlaces) {
         const url = enlace.href.toLowerCase();
         const texto = enlace.text.toLowerCase();
 
-        // Evitamos enlaces irrelevantes
+        // Evitar enlaces que no son fichas de contenido
         if (url.includes('/buscar') || url.includes('/explorar') || url.includes('/browse') || url.includes('/genero') || url.includes('/series')) {
             continue;
         }
         if (!url.includes(dominio)) continue;
 
-        const matchSlug = url.includes(slugKeyword);
-        const matchTexto = texto.includes(keywordLimpia);
+        const matchTexto = texto.includes(keywordLimpia) || url.includes(keywordLimpia.replace(/[^a-z0-9]/g, '-'));
 
-        if (matchSlug || matchTexto) {
-            const esPatronAnimeflv = url.includes('/anime/');
-            const esPatronCuevana = url.includes('/pelicula/') || url.includes('/serie/');
-            const esPatronJkanime = !url.includes('/ver/') && url.split('/').filter(p => p.length > 0).length === 3; // jkanime.net/slug/
-
-            if (esPatronAnimeflv || esPatronCuevana || esPatronJkanime) {
-                mejorCoincidencia = enlace.href;
-                break; 
-            }
-            if (!mejorCoincidencia) {
-                mejorCoincidencia = enlace.href;
-            }
+        if (matchTexto) {
+            resultadosMap.set(enlace.href, enlace.text);
         }
     }
-    return mejorCoincidencia;
+
+    const resultados = Array.from(resultadosMap.entries()).map(([href, text]) => ({ href, text }));
+
+    if (resultados.length === 0) {
+        return null;
+    }
+
+    console.log(`\n======================================================`);
+    console.log(`📺 SHOWS ENCONTRADOS EN ${dominio.toUpperCase()}`);
+    console.log(`======================================================`);
+    resultados.forEach((r, idx) => {
+        console.log(`  ${idx + 1}. ${r.text}`);
+    });
+    console.log(`======================================================`);
+
+    const seleccion = parseInt(await pregunta("\n👉 Selecciona el show correcto: "), 10) - 1;
+    if (seleccion >= 0 && seleccion < resultados.length) {
+        return resultados[seleccion].href;
+    }
+    
+    return resultados[0].href;
 }
 
 // ============================================================================
-// ACTIVACIÓN DEL REPRODUCTOR
+// ACTIVACIÓN DEL VIDEO
 // ============================================================================
 async function activarVideoSandbox(page) {
     console.log("\n🎬 Buscando reproductor de video en los frames...");
@@ -107,7 +218,7 @@ async function activarVideoSandbox(page) {
         ];
         
         const startTime = Date.now();
-        while (Date.now() - startTime < 20000) { 
+        while (Date.now() - startTime < 30000) { 
             if (global.videoCapturado) return true;
 
             const frames = page.frames();
@@ -138,26 +249,32 @@ async function activarVideoSandbox(page) {
     return false;
 }
 
+// ============================================================================
+// ORQUESTADOR
+// ============================================================================
 async function main() {
     console.log("======================================================");
-    console.log("🤖 REPRODUCTOR UNIVERSAL HÍBRIDO v6.0");
+    console.log("🤖 REPRODUCTOR ADAPTATIVO DINÁMICO v6.1");
     console.log("======================================================");
 
-    const dominio = (await pregunta("🔗 ¿De qué dominio quieres reproducir la receta? (ej: jkanime.net): ")).trim();
-    const recetaPath = path.join(__dirname, 'configs', `${dominio}_receta.json`);
-
-    let finalPath = fs.existsSync(recetaPath) ? recetaPath : null;
-    let receta = { dominio: dominio, metadata: { clasificacion: "SERIE" } };
-
-    if (finalPath) {
-        receta = JSON.parse(fs.readFileSync(finalPath, 'utf8'));
+    // --- 1. LECTURA ADAPTATIVA DE RECETAS EN DISCO ---
+    let receta = cargarRecetaAutomatica();
+    if (!receta) {
+        const configsDir = path.join(__dirname, 'configs');
+        const archivos = fs.readdirSync(configsDir).filter(f => f.endsWith('_receta.json'));
+        if (archivos.length === 0) {
+            console.error("❌ No se encontraron recetas en la carpeta configs/. Graba una primero.");
+            rl.close();
+            return;
+        }
+        receta = await elegirRecetaInteractiva();
     }
 
     let clasificacion = receta.metadata?.clasificacion || 'SERIE';
-    console.log(`📂 Receta cargada | Dominio: ${receta.dominio} | Clasificación: ${clasificacion}`);
+    console.log(`📂 Receta activa | Dominio: ${receta.dominio} | Clasificación: ${clasificacion}`);
 
-    // --- 1. PEDIR DATOS DE BÚSQUEDA ---
-    const keyword = (await pregunta(`📺 ¿Qué quieres buscar?: `)).trim();
+    // --- 2. PEDIR DATOS DE BÚSQUEDA ---
+    const keyword = (await pregunta(`\n📺 ¿Qué quieres buscar?: `)).trim();
     if (!keyword) {
         console.log("❌ Debes ingresar un término de búsqueda.");
         rl.close();
@@ -175,10 +292,10 @@ async function main() {
         }
     }
 
-    // 2. INICIAR NAVEGADOR EN SEGUNDO PLANO
+    // 3. INICIAR NAVEGADOR EN SEGUNDO PLANO
     console.log("\n🚀 Iniciando navegador indetectable en segundo plano...");
     const { browser, page } = await connect({
-        headless: "auto", 
+        headless: MODO_INVISIBLE, 
         args: ["--start-maximized"],
         turnstile: true, 
         connectOption: { defaultViewport: null }
@@ -186,13 +303,13 @@ async function main() {
 
     await page.evaluateOnNewDocument(() => { window.open = () => null; });
 
-    // POPUP BLOCKER
+    // POPUP BLOCKER CON RETRASO
     browser.on('targetcreated', async (target) => {
         if (target.type() === 'page') {
             const newPage = await target.page();
             if (newPage && newPage !== page) {
                 try {
-                    await new Promise(r => setTimeout(r, 500)); 
+                    await new Promise(r => setTimeout(r, 600)); 
                     await newPage.close(); 
                 } catch (e) {}
             }
@@ -218,8 +335,8 @@ async function main() {
         await page.goto(urlInicio, { waitUntil: 'domcontentloaded' });
         await esperarBypass(page);
 
-        // --- 3. EJECUTAR BÚSQUEDA ---
-        const searchSelector = obtenerSelectorBuscador(receta.dominio);
+        // --- 4. EJECUTAR BÚSQUEDA DINÁMICA ---
+        const searchSelector = obtenerSelectorBuscadorDinamico(receta, receta.dominio);
         console.log(`🔍 Escribiendo '${keyword}' en '${searchSelector}'...`);
         
         await page.waitForSelector(searchSelector, { timeout: 10000 });
@@ -233,24 +350,24 @@ async function main() {
         await new Promise(r => setTimeout(r, 5000));
         await esperarBypass(page);
 
-        // --- 4. SELECCIONAR LA MEJOR COINCIDENCIA ---
-        const showUrl = await buscarMejorCoincidencia(page, keyword, receta.dominio);
+        // --- 5. SELECCIÓN INTERACTIVA DE SHOWS ---
+        const showUrl = await elegirCoincidenciaInteractiva(page, keyword, receta.dominio);
         if (!showUrl) {
             throw new Error(`No se encontró ninguna coincidencia para '${keyword}' en los resultados de búsqueda.`);
         }
-        console.log(`✅ Coincidencia encontrada: ${showUrl}`);
+        console.log(`✅ Coincidencia elegida: ${showUrl}`);
 
-        // --- 5. IR AL CAPÍTULO DIRECTO ---
+        // --- 6. TRASLACIÓN DE EPISODIOS SIN Condicionales por dominio ---
         let targetUrl = showUrl;
         if (clasificacion === 'SERIE') {
-            targetUrl = generarUrlEpisodio(showUrl, capituloElegido, receta.dominio);
+            targetUrl = generarUrlEpisodioDinamica(showUrl, capituloElegido, receta);
         }
         
         console.log(`➡️ Navegando al contenido final: ${targetUrl}`);
         await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
         await esperarBypass(page);
 
-        // --- 6. DISPARAR EL REPRODUCTOR ---
+        // --- 7. DISPARAR EL REPRODUCTOR ---
         await activarVideoSandbox(page);
 
         if (global.videoCapturado) {

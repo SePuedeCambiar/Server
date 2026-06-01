@@ -1,0 +1,32 @@
+{
+  "dominio": "jkanime.net",
+  "pasos": [],
+  "historialNavegacion": [
+    {
+      "url": "https://jkanime.net/",
+      "time": "2026-06-01T17:55:20.469Z"
+    },
+    {
+      "url": "https://jkanime.net/buscar/one%20piece",
+      "time": "2026-06-01T17:55:34.645Z"
+    },
+    {
+      "url": "https://jkanime.net/one-piece/",
+      "time": "2026-06-01T17:55:37.216Z"
+    },
+    {
+      "url": "https://jkanime.net/one-piece/1/",
+      "time": "2026-06-01T17:55:40.919Z"
+    },
+    {
+      "url": "https://jkanime.net/jkplayer/um?e=MUc5S0R3ci9leXF5aFNHWEEyczRXQWhJbGdlNFUyaC91TjUxWHMvWGxmWFZ6WnB1TStZT2JiZzhBSlVzTVRpbzo66RMyFaShdPMivGFHmZr5hw--&t=c457d7ae48d08a6b84bc0b1b9bd7d474&op=NDk4OQ==",
+      "time": "2026-06-01T17:55:41.616Z"
+    }
+  ],
+  "finalUrl": "https://jkanime.net/one-piece/1/",
+  "metadata": {
+    "version": "7.6",
+    "fecha": "2026-06-01T17:55:09.817Z",
+    "clasificacion": "SERIE"
+  }
+}
