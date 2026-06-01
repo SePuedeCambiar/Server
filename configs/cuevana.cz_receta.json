@@ -1,0 +1,68 @@
+{
+  "dominio": "cuevana.cz",
+  "pasos": [],
+  "historialNavegacion": [
+    {
+      "url": "https://cuevana.cz/",
+      "time": "2026-06-01T18:09:52.414Z"
+    },
+    {
+      "url": "https://cuevana.cz/explorar?s=superman",
+      "time": "2026-06-01T18:10:04.758Z"
+    },
+    {
+      "url": "https://cuevana.cz/explorar?s=superman&__cf_chl_rt_tk=U3NWdYw_Q4y8O4GXkisKAZ8X4miygixvFXTICZ3PiA8-1780337404-1.0.1.1-BXmofJ04bxQFzSZuL.Bujk6JDNrIogAPMkhVXpEv8xw",
+      "time": "2026-06-01T18:10:04.790Z"
+    },
+    {
+      "url": "https://cuevana.cz/explorar?s=superman",
+      "time": "2026-06-01T18:10:04.922Z"
+    },
+    {
+      "url": ":",
+      "time": "2026-06-01T18:10:05.502Z"
+    },
+    {
+      "url": "https://cuevana.cz/explorar?s=superman&__cf_chl_tk=U3NWdYw_Q4y8O4GXkisKAZ8X4miygixvFXTICZ3PiA8-1780337404-1.0.1.1-BXmofJ04bxQFzSZuL.Bujk6JDNrIogAPMkhVXpEv8xw",
+      "time": "2026-06-01T18:10:10.316Z"
+    },
+    {
+      "url": "https://cuevana.cz/explorar?s=superman",
+      "time": "2026-06-01T18:10:10.479Z"
+    },
+    {
+      "url": "https://cuevana.cz/pelicula/superman-2",
+      "time": "2026-06-01T18:10:14.075Z"
+    },
+    {
+      "url": "https://cuevana.cz/",
+      "time": "2026-06-01T18:10:19.448Z"
+    },
+    {
+      "url": "https://video.cuevana.cz/?token=1E0xdCwJTWggeV0cN&apl=0&pops=true",
+      "time": "2026-06-01T18:10:19.799Z"
+    },
+    {
+      "url": ":",
+      "time": "2026-06-01T18:10:27.509Z"
+    },
+    {
+      "url": "https://minochinos.com/v/rxhm2g9m3et4?auto=1",
+      "time": "2026-06-01T18:10:27.533Z"
+    },
+    {
+      "url": "data:application/pdf;base64,JVBERi0xLg0KdHJhaWxlcjw8L1Jvb3Q8PC9QYWdlczw8L0tpZHNbPDwvTWVkaWFCb3hbMCAwIDMgM10+Pl0+Pj4+Pj4=",
+      "time": "2026-06-01T18:10:28.761Z"
+    },
+    {
+      "url": "chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/index.html",
+      "time": "2026-06-01T18:10:28.829Z"
+    }
+  ],
+  "finalUrl": "https://cuevana.cz/",
+  "metadata": {
+    "version": "7.6",
+    "fecha": "2026-06-01T18:09:49.144Z",
+    "clasificacion": "SERIE"
+  }
+}
