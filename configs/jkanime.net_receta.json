@@ -1,32 +1,35 @@
 {
   "dominio": "jkanime.net",
-  "pasos": [],
-  "historialNavegacion": [
+  "searchSelector": null,
+  "submitSelector": null,
+  "episodeUrlPattern": "{showUrl}/{number}/",
+  "metadata": {
+    "version": "8.1",
+    "fecha": "2026-06-02T18:09:05.112Z",
+    "clasificacion": "PELICULA_OVA",
+    "requiresBypass": false
+  },
+  "pasos_crudos": [],
+  "historial": [
     {
       "url": "https://jkanime.net/",
-      "time": "2026-06-01T17:55:20.469Z"
+      "time": "2026-06-02T18:09:14.296Z"
     },
     {
       "url": "https://jkanime.net/buscar/one%20piece",
-      "time": "2026-06-01T17:55:34.645Z"
+      "time": "2026-06-02T18:09:31.888Z"
     },
     {
       "url": "https://jkanime.net/one-piece/",
-      "time": "2026-06-01T17:55:37.216Z"
+      "time": "2026-06-02T18:09:34.377Z"
     },
     {
       "url": "https://jkanime.net/one-piece/1/",
-      "time": "2026-06-01T17:55:40.919Z"
+      "time": "2026-06-02T18:09:38.725Z"
     },
     {
-      "url": "https://jkanime.net/jkplayer/um?e=MUc5S0R3ci9leXF5aFNHWEEyczRXQWhJbGdlNFUyaC91TjUxWHMvWGxmWFZ6WnB1TStZT2JiZzhBSlVzTVRpbzo66RMyFaShdPMivGFHmZr5hw--&t=c457d7ae48d08a6b84bc0b1b9bd7d474&op=NDk4OQ==",
-      "time": "2026-06-01T17:55:41.616Z"
+      "url": "https://jkanime.net/jkplayer/um?e=YlE0Y3NlTTArR25hWnZXaGNBd2dKVHh2eGkrcElxSWs1RkRrd1JUVnB0aDNtNTk1ZWNUeEdNSHIrVkxtMnhBdTo69Er2hviy_8IvOysIoQFtJg--&t=c457d7ae48d08a6b84bc0b1b9bd7d474&op=NDk4OQ==",
+      "time": "2026-06-02T18:09:39.338Z"
     }
-  ],
-  "finalUrl": "https://jkanime.net/one-piece/1/",
-  "metadata": {
-    "version": "7.6",
-    "fecha": "2026-06-01T17:55:09.817Z",
-    "clasificacion": "SERIE"
-  }
+  ]
 }

@@ -1,68 +1,71 @@
 {
   "dominio": "cuevana.cz",
-  "pasos": [],
-  "historialNavegacion": [
+  "searchSelector": null,
+  "submitSelector": null,
+  "episodeUrlPattern": "{showUrl}{number}/",
+  "metadata": {
+    "version": "8.1",
+    "fecha": "2026-06-02T18:16:57.636Z",
+    "clasificacion": "PELICULA_OVA",
+    "requiresBypass": false
+  },
+  "pasos_crudos": [],
+  "historial": [
     {
       "url": "https://cuevana.cz/",
-      "time": "2026-06-01T18:09:52.414Z"
+      "time": "2026-06-02T18:17:08.478Z"
     },
     {
       "url": "https://cuevana.cz/explorar?s=superman",
-      "time": "2026-06-01T18:10:04.758Z"
+      "time": "2026-06-02T18:17:16.765Z"
     },
     {
-      "url": "https://cuevana.cz/explorar?s=superman&__cf_chl_rt_tk=U3NWdYw_Q4y8O4GXkisKAZ8X4miygixvFXTICZ3PiA8-1780337404-1.0.1.1-BXmofJ04bxQFzSZuL.Bujk6JDNrIogAPMkhVXpEv8xw",
-      "time": "2026-06-01T18:10:04.790Z"
+      "url": "https://cuevana.cz/explorar?s=superman&__cf_chl_rt_tk=gU4JvB4SWTl7GTB_lPdV4p259z9.CRUXFePj0oNdCKE-1780424236-1.0.1.1-JItcVf8Xj4Z92JBNgDacDX4RO6sS7aoat7deSQSfJe0",
+      "time": "2026-06-02T18:17:16.804Z"
     },
     {
       "url": "https://cuevana.cz/explorar?s=superman",
-      "time": "2026-06-01T18:10:04.922Z"
+      "time": "2026-06-02T18:17:16.970Z"
     },
     {
       "url": ":",
-      "time": "2026-06-01T18:10:05.502Z"
+      "time": "2026-06-02T18:17:17.706Z"
     },
     {
-      "url": "https://cuevana.cz/explorar?s=superman&__cf_chl_tk=U3NWdYw_Q4y8O4GXkisKAZ8X4miygixvFXTICZ3PiA8-1780337404-1.0.1.1-BXmofJ04bxQFzSZuL.Bujk6JDNrIogAPMkhVXpEv8xw",
-      "time": "2026-06-01T18:10:10.316Z"
+      "url": "https://cuevana.cz/explorar?s=superman&__cf_chl_tk=gU4JvB4SWTl7GTB_lPdV4p259z9.CRUXFePj0oNdCKE-1780424236-1.0.1.1-JItcVf8Xj4Z92JBNgDacDX4RO6sS7aoat7deSQSfJe0",
+      "time": "2026-06-02T18:17:21.687Z"
     },
     {
       "url": "https://cuevana.cz/explorar?s=superman",
-      "time": "2026-06-01T18:10:10.479Z"
+      "time": "2026-06-02T18:17:21.862Z"
     },
     {
       "url": "https://cuevana.cz/pelicula/superman-2",
-      "time": "2026-06-01T18:10:14.075Z"
+      "time": "2026-06-02T18:17:23.461Z"
     },
     {
       "url": "https://cuevana.cz/",
-      "time": "2026-06-01T18:10:19.448Z"
+      "time": "2026-06-02T18:17:28.865Z"
     },
     {
       "url": "https://video.cuevana.cz/?token=1E0xdCwJTWggeV0cN&apl=0&pops=true",
-      "time": "2026-06-01T18:10:19.799Z"
+      "time": "2026-06-02T18:17:29.247Z"
     },
     {
       "url": ":",
-      "time": "2026-06-01T18:10:27.509Z"
+      "time": "2026-06-02T18:17:31.573Z"
     },
     {
       "url": "https://minochinos.com/v/rxhm2g9m3et4?auto=1",
-      "time": "2026-06-01T18:10:27.533Z"
+      "time": "2026-06-02T18:17:31.589Z"
     },
     {
       "url": "data:application/pdf;base64,JVBERi0xLg0KdHJhaWxlcjw8L1Jvb3Q8PC9QYWdlczw8L0tpZHNbPDwvTWVkaWFCb3hbMCAwIDMgM10+Pl0+Pj4+Pj4=",
-      "time": "2026-06-01T18:10:28.761Z"
+      "time": "2026-06-02T18:17:31.948Z"
     },
     {
       "url": "chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/index.html",
-      "time": "2026-06-01T18:10:28.829Z"
+      "time": "2026-06-02T18:17:32.029Z"
     }
-  ],
-  "finalUrl": "https://cuevana.cz/",
-  "metadata": {
-    "version": "7.6",
-    "fecha": "2026-06-01T18:09:49.144Z",
-    "clasificacion": "SERIE"
-  }
+  ]
 }
