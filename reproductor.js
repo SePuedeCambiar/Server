@@ -20,52 +20,48 @@ db.exec(`
 `);
 
 // ============================================================================
-// 2. CONFIGURACIÓN GENERAL
+// 2. CONFIGURACIÓN GENERAL Y ARGUMENTOS
 // ============================================================================
-// CAMBIO CRÍTICO: Forzamos false para evitar detecciones de Cloudflare
 const MODO_INVISIBLE = false; 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const pregunta = (texto) => new Promise((resolve) => rl.question(texto, resolve));
 
 global.videoCapturado = null;
 
+// Manejo de argumentos de línea de comandos (CLI)
+const args = process.argv.slice(2);
+const IS_AUTO = args.includes('--auto');
+const TARGET_ID = args.find(arg => arg.startsWith('--id='))?.split('=')[1] || 
+                  (args[args.indexOf('--id') + 1] || null);
+
 // ============================================================================
-// 3. FUNCIONES DE BYPASS (MÉTODO REFORZADO)
+// 3. FUNCIONES DE BYPASS Y AYUDANTES (Sin cambios, se mantienen igual)
 // ============================================================================
 async function esperarBypass(page, maxIntentos = 30) {
     console.log("🛡️ Verificando estado del bypass...");
     await new Promise(r => setTimeout(r, 4000));
-
     for (let i = 1; i <= maxIntentos; i++) {
         try {
             const titulo = await page.title().catch(() => '');
             const url = page.url();
-            
-            // Detectar si estamos en la página de desafío
             let esDesafio = titulo.toLowerCase().includes('just a moment') || 
                             url.includes('challenges.cloudflare.com') || 
                             titulo.toLowerCase().includes('verificando que eres humano');
-            
             if (!esDesafio) {
-                // Verificación extra: ¿El HTML contiene rastros de Cloudflare?
                 const contenido = await page.content();
                 if (contenido.includes('cf-challenge') || contenido.includes('turnstile')) {
                     esDesafio = true;
                 }
             }
-
             if (esDesafio) {
                 console.log(`⏳ [${i}/${maxIntentos}] Resolviendo escudo de Cloudflare...`);
                 await new Promise(r => setTimeout(r, 4000));
             } else if (url !== 'about:blank' && !url.startsWith('about:') && url.trim().length > 10) {
-                // Solo retornamos true si la página parece haber cargado contenido real
                 console.log("✅ Bypass completado con éxito.");
                 await new Promise(r => setTimeout(r, 2000));
                 return true;
             }
-        } catch (e) {
-            console.log("⚠️ Error durante la verificación del bypass, reintentando...");
-        }
+        } catch (e) { console.log("⚠️ Error bypass:", e); }
     }
     return false;
 }
@@ -79,9 +75,7 @@ async function clickInteligente(page, selector) {
         }, selector);
         await page.click(selector);
     } catch (error) {
-        try {
-            await page.evaluate((sel) => { document.querySelector(sel)?.click(); }, selector);
-        } catch (e) {}
+        try { await page.evaluate((sel) => { document.querySelector(sel)?.click(); }, selector); } catch (e) {}
     }
     await new Promise(r => setTimeout(r, 1500));
 }
@@ -110,7 +104,7 @@ async function elegirRecetaInteractiva() {
 }
 
 // ============================================================================
-// 5. LÓGICA GENÉRICA
+// 5. LÓGICA DE NAVEGACIÓN (Modularizada para modo Auto)
 // ============================================================================
 async function obtenerTotalCapitulos(page) {
     return await page.evaluate(() => {
@@ -124,7 +118,7 @@ async function obtenerTotalCapitulos(page) {
     });
 }
 
-async function elegirCoincidenciaInteractiva(page, keyword, dominio) {
+async function buscarShow(page, keyword, dominio) {
     const enlaces = await page.evaluate(() => {
         return Array.from(document.querySelectorAll('a')).map(a => ({
             href: a.href,
@@ -133,19 +127,14 @@ async function elegirCoincidenciaInteractiva(page, keyword, dominio) {
     });
     const keywordLimpia = keyword.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); 
     const resultados = enlaces.filter(e => e.text.toLowerCase().includes(keywordLimpia) || e.href.toLowerCase().includes(keywordLimpia));
+    
     if (resultados.length === 0) return null;
+    if (IS_AUTO) return resultados[0]; // En auto, toma el primer resultado
+
     console.log(`\n📺 RESULTADOS:`);
     resultados.forEach((r, idx) => console.log(`  ${idx + 1}. ${r.text}`));
     const seleccion = parseInt(await pregunta("\n👉 Selecciona el show: "), 10) - 1;
     return resultados[seleccion] || resultados[0];
-}
-
-function obtenerSelectorBuscador(receta) {
-    return receta.searchSelector || 'input[type="search"], input[name="q"], #search';
-}
-
-function obtenerSelectorSubmit(receta) {
-    return receta.submitSelector || 'button[type="submit"], input[type="submit"], .search-submit';
 }
 
 function generarUrlEpisodio(showUrl, capitulo, receta) {
@@ -185,14 +174,33 @@ async function activarVideoSandbox(page) {
 // ============================================================================
 async function main() {
     console.log("======================================================");
-    console.log("🤖 REPRODUCTOR ADAPTATIVO v7.3 (Bypass Reforzado)");
+    console.log(IS_AUTO ? "🤖 MODO AUTOMÁTICO ACTIVO (Refresco de URL)" : "🤖 REPRODUCTOR ADAPTATIVO (Modo Manual)");
     console.log("======================================================");
 
-    let receta = cargarRecetaAutomatica() || await elegirRecetaInteractiva();
-    const keyword = (await pregunta(`\n📺 ¿Qué quieres buscar?: `)).trim();
-    if (!keyword) return;
+    let receta, keyword, clasificacionFinal, capituloElegido, targetId = null;
 
-    // CONEXIÓN EXACTA AL MÉTODO ORIGINAL
+    if (IS_AUTO) {
+        if (!TARGET_ID) {
+            console.error("❌ Error: El modo --auto requiere un ID (Ejemplo: --id 15)");
+            process.exit(1);
+        }
+        targetId = parseInt(TARGET_ID, 10);
+        const data = db.prepare('SELECT * FROM contenidos WHERE id = ?').get(targetId);
+        if (!data) {
+            console.error(`❌ Error: No se encontró el contenido con ID ${targetId} en la DB.`);
+            process.exit(1);
+        }
+        keyword = data.titulo;
+        clasificacionFinal = data.clasificacion;
+        capituloElegido = data.episodio;
+        receta = cargarRecetaAutomatica();
+        console.log(`🔄 Refrescando: ${keyword} | Ep: ${capituloElegido}`);
+    } else {
+        receta = cargarRecetaAutomatica() || await elegirRecetaInteractiva();
+        keyword = (await pregunta(`\n📺 ¿Qué quieres buscar?: `)).trim();
+        if (!keyword) return;
+    }
+
     const { browser, page } = await connect({
         headless: MODO_INVISIBLE, 
         args: ["--start-maximized"],
@@ -213,15 +221,10 @@ async function main() {
 
     try {
         await page.goto(`https://${receta.dominio}`, { waitUntil: 'domcontentloaded' });
-        
-        // ESPERA EL BYPASS
         const bypassOk = await esperarBypass(page);
         if (!bypassOk) throw new Error("No se pudo resolver el captcha de Cloudflare.");
 
-        const sSelector = obtenerSelectorBuscador(receta);
-        
-        // VERIFICACIÓN DE CARGA: Esperamos a que el buscador sea visible antes de escribir
-        console.log(`🔍 Esperando buscador ${sSelector}...`);
+        const sSelector = receta.searchSelector || 'input[type="search"], input[name="q"], #search';
         await page.waitForSelector(sSelector, { timeout: 15000 });
         
         await page.$eval(sSelector, (el, val) => { 
@@ -230,30 +233,32 @@ async function main() {
             el.dispatchEvent(new Event('change', { bubbles: true }));
         }, keyword);
 
-        const subSelector = obtenerSelectorSubmit(receta);
+        const subSelector = receta.submitSelector || 'button[type="submit"], input[type="submit"], .search-submit';
         try { await page.click(subSelector); } catch (e) {
             await page.$eval(sSelector, (el) => el.closest('form')?.submit());
         }
 
         await esperarBypass(page);
 
-        const showSeleccionado = await elegirCoincidenciaInteractiva(page, keyword, receta.dominio);
-        if (!showSeleccionado) throw new Error("No se encontró el show. Es posible que el bypass fallara.");
+        const showSeleccionado = await buscarShow(page, keyword, receta.dominio);
+        if (!showSeleccionado) throw new Error("No se encontró el show.");
 
-        const defaultClas = receta.metadata?.clasificacion ? receta.metadata.clasificacion[0] : 'P';
-        const respuestaClas = (await pregunta(`\n👉 (S)erie o (P)elícula? [Def: ${defaultClas}]: `)).trim().toUpperCase();
-        let clasificacionFinal = (respuestaClas === 'P') ? 'PELICULA_OVA' : 'SERIE';
+        if (!IS_AUTO) {
+            const defaultClas = receta.metadata?.clasificacion ? receta.metadata.clasificacion[0] : 'P';
+            const respuestaClas = (await pregunta(`\n👉 (S)erie o (P)elícula? [Def: ${defaultClas}]: `)).trim().toUpperCase();
+            clasificacionFinal = (respuestaClas === 'P') ? 'PELICULA_OVA' : 'SERIE';
+        }
 
         await page.goto(showSeleccionado.href, { waitUntil: 'domcontentloaded' });
         await esperarBypass(page);
 
         let targetUrl = showSeleccionado.href;
-        let capituloElegido = null;
-
         if (clasificacionFinal === 'SERIE') {
-            const total = await obtenerTotalCapitulos(page);
-            const cap = await pregunta(`👉 Capítulo (1 al ${total}): `);
-            capituloElegido = parseInt(cap, 10);
+            if (!IS_AUTO) {
+                const total = await obtenerTotalCapitulos(page);
+                const cap = await pregunta(`👉 Capítulo (1 al ${total}): `);
+                capituloElegido = parseInt(cap, 10);
+            }
             targetUrl = generarUrlEpisodio(showSeleccionado.href, capituloElegido, receta);
         }
 
@@ -261,8 +266,7 @@ async function main() {
         await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
         await esperarBypass(page);
 
-        // AUTO-CURACIÓN
-        console.log("\n🧪 Ejecutando auto-curación de reproductor...");
+        // Auto-curación
         const diagnostico = await page.evaluate(() => {
             return { 
                 hasVideoPlay: document.querySelector('.video-play') !== null, 
@@ -270,16 +274,10 @@ async function main() {
             };
         });
 
-        if (diagnostico.hasVideoPlay) {
-            console.log("⚡ Forzando clic en botón de reproducción...");
-            await clickInteligente(page, '.video-play');
-        }
-
+        if (diagnostico.hasVideoPlay) await clickInteligente(page, '.video-play');
         if (diagnostico.servers.length > 0) {
-            console.log("⚡ Forzando selección de primer servidor...");
             await page.evaluate(() => {
-                const primerSrv = document.querySelector('li[role="presentation"], .server-item');
-                if (primerSrv) primerSrv.click();
+                document.querySelector('li[role="presentation"], .server-item')?.click();
             });
             await new Promise(r => setTimeout(r, 4000));
         }
@@ -288,9 +286,17 @@ async function main() {
 
         if (global.videoCapturado) {
             console.log(`\n🎉 ¡ÉXITO! Enlace: ${global.videoCapturado}`);
-            const insert = db.prepare('INSERT INTO contenidos (titulo, clasificacion, episodio, url_final) VALUES (?, ?, ?, ?)');
-            insert.run(showSeleccionado.text, clasificacionFinal, capituloElegido, global.videoCapturado);
-            console.log("💾 Datos guardados en playlist.db");
+            
+            if (IS_AUTO && targetId) {
+                // 🚀 ACTUALIZACIÓN: En lugar de INSERT, hacemos UPDATE
+                const update = db.prepare('UPDATE contenidos SET url_final = ?, fecha_captura = CURRENT_TIMESTAMP WHERE id = ?');
+                update.run(global.videoCapturado, targetId);
+                console.log(`💾 URL actualizada exitosamente para ID ${targetId}`);
+            } else {
+                const insert = db.prepare('INSERT INTO contenidos (titulo, clasificacion, episodio, url_final) VALUES (?, ?, ?, ?)');
+                insert.run(showSeleccionado.text, clasificacionFinal, capituloElegido, global.videoCapturado);
+                console.log("💾 Nuevo registro guardado en playlist.db");
+            }
         } else {
             console.log("\n❌ No se capturó el stream.");
         }
