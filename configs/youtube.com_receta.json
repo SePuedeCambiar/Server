@@ -1,0 +1,14 @@
+{
+  "name": "YouTube",
+  "dominio": "youtube.com",
+  "searchPattern": "/results?search_query={query}",
+  "itemSelector": "ytd-video-renderer",
+  "titleSelector": "#video-title",
+  "linkSelector": "a#video-title",
+  "episodeStrategy": null,
+  "metadata": {
+    "version": "1.0",
+    "clasificacion": "PELICULA_OVA",
+    "requiresBypass": true
+  }
+}

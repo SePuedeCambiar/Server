@@ -1,241 +1,291 @@
 import subprocess
-import logging
 import os
-from threading import Thread
+import time
+import sqlite3
+import re
+import logging
+from threading import Thread, Event
+from datetime import datetime
 
+# ==============================================================================
+# CONFIGURACIÓN GLOBAL
+# ==============================================================================
 class Config:
+    # Rutas y Archivos
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    LISTA_URLS = os.path.join(BASE_DIR, "lista.txt")
-    FALLIDAS_URLS = os.path.join(BASE_DIR, "urls_fallidas.txt")
+    DB_PATH = os.path.join(BASE_DIR, "playlist.db")
     LOG_FILE = os.path.join(BASE_DIR, "tv_system.log")
     FFMPEG_LOG = os.path.join(BASE_DIR, "ffmpeg_errors.log")
     COOKIES_FILE = os.path.join(BASE_DIR, "cookies.txt")
     ALMACEN = "/dev/shm/almacen_tv"
-    API_URL = "http://localhost:9000/" 
-    RTSP_URL = "rtsp://localhost:8554/novela"
-
+    
+    # Streaming
+    RTMP_URL = "rtmp://localhost:1935/novela"
+    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    
+    # Optimización
+    VIDEO_SCALE = "scale=1280:720,fps=25,format=yuv420p"
+    # En la clase Config, cambia FFMPEG_PARAMS
+    FFMPEG_PARAMS = [
+    "-c:v", "libx264", 
+    "-preset", "veryfast",     # Cambiado de ultrafast a veryfast para mejor calidad/estabilidad
+    # "-tune", "zerolatency",   # <--- ELIMINA ESTA LÍNEA COMPLETAMENTE
+    "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k", "-f", "flv"
+]
     @classmethod
     def preparar_entorno(cls):
         if not os.path.exists(cls.ALMACEN):
             os.makedirs(cls.ALMACEN)
-            print(f"Carpeta de RAM creada en: {cls.ALMACEN}")
-        archivos_necesarios = [
-            cls.LISTA_URLS, 
-            cls.FALLIDAS_URLS, 
-            cls.LOG_FILE, 
-            cls.FFMPEG_LOG, 
-            cls.COOKIES_FILE
-        ]
-        for ruta in archivos_necesarios:
-            if not os.path.exists(ruta):
-                with open(ruta, 'w') as f:
-                    pass
-                print(f"Archivo creado: {os.path.basename(ruta)} en {ruta}")
+        # Limpiar RAM al iniciar
+        for f in os.listdir(cls.ALMACEN):
+            os.remove(os.path.join(cls.ALMACEN, f))
 
-class LecturaYEscrituraEnLista:
+# Configuración de Logs
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] [%(levelname)s] %(message)s',
+    handlers=[logging.FileHandler(Config.LOG_FILE), logging.StreamHandler()]
+)
+logger = logging.getLogger("TV_System")
+
+# ==============================================================================
+# GESTIÓN DE BASE DE DATOS
+# ==============================================================================
+class PlaylistDB:
     def __init__(self):
-        self.ruta_lista = Config.LISTA_URLS
+        self.conn = sqlite3.connect(Config.DB_PATH, check_same_thread=False)
+        self.conn.row_factory = sqlite3.Row
 
-    def leer(self):
-        print("--- Leyendo Lista de Videos ---")
-        try:
-            with open(self.ruta_lista, 'r') as archivo:
-                urls = archivo.readlines()
-                if not urls:
-                    print("La lista está vacía. Agrega URLs al archivo.")
-                    return [] 
-                for i, url in enumerate(urls, 1):
-                    url_limpia = url.strip()
-                    if url_limpia:
-                        print(f"{i}. {url_limpia}")
-                return [u.strip() for u in urls if u.strip()]
-        except Exception as e:
-            print(f"Error al leer el archivo: {e}")
-            return [] 
+    def obtener_siguiente(self):
+        # Obtiene el primer video que no haya sido reproducido o el más antiguo
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM contenidos ORDER BY id ASC LIMIT 1")
+        return cursor.fetchone()
 
-    def borradoYavance(self):
-        urls = self.leer() 
-        if not urls:
-            print("No hay URLs para borrar.")
-            return None
-        url_a_procesar = urls[0] 
-        resto_de_urls = urls[1:] 
-        with open(self.ruta_lista, 'w') as archivo:
-            for u in resto_de_urls:
-                archivo.write(u + "\n")
-        print(f"Procesada y borrada: {url_a_procesar}")
-        return url_a_procesar
-    
-class descargarVideos:
+    def borrar_actual(self, video_id):
+        self.conn.execute("DELETE FROM contenidos WHERE id = ?", (video_id,))
+        self.conn.commit()
+
+# ==============================================================================
+# MÓDULO DE DESCARGA (Soporta MP4 y M3U8)
+# ==============================================================================
+class Downloader:
     def __init__(self):
-        self.cookies = Config.COOKIES_FILE
         self.almacen = Config.ALMACEN
-        self.user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        self.referer = "https://mixdrop.is/"
 
-    def descargar_directo_wget(self, url, destino):
-        """Método de respaldo: Descarga bruta usando wget"""
-        print(f"[FALLBACK] Intentando descarga directa con WGET: {url}")
+    def descargar(self, video_data):
+        url = video_data['url_final']
+        video_id = video_data['id']
+        
+        # --- CASO A: Es un m3u8 (Directo) ---
+        if ".m3u8" in url:
+            logger.info(f"[BG] Detectado HLS directo para ID {video_id}. Creando marcador...")
+            with open(f"{self.almacen}/next_{video_id}.url", "w") as f:
+                f.write(f"{url}\nhttps://jkanime.net/") # Referer genérico
+            return True
+
+        # --- CASO B: MP4 (yt-dlp) ---
+        logger.info(f"[BG] Descargando MP4 para ID {video_id} via yt-dlp...")
+        destino = f"{self.almacen}/next_{video_id}.mp4"
+        
         comando = [
-            "wget",
-            "-q",
-            "--user-agent", self.user_agent,
-            "--referer", self.referer,
-            "-O", destino,
-            url
+            "yt-dlp", "--impersonate", "chrome",
+            "--cookies", Config.COOKIES_FILE,
+            "-f", "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[ext=mp4]/best",
+            "--no-playlist", "--merge-output-format", "mp4",
+            "-o", destino, url
         ]
+        
         try:
-            subprocess.run(comando, capture_output=True, text=True, check=True)
+            subprocess.run(comando, capture_output=True, check=True)
             if os.path.exists(destino) and os.path.getsize(destino) > 0:
                 return True
         except Exception as e:
-            print(f"[FALLBACK] WGET también falló: {e}")
-        return False
+            logger.error(f"[BG] Error descargando ID {video_id}: {e}")
+            return False
 
-    def descargar(self, url):
-        obtenido = os.path.join(self.almacen, "siguiente.mp4")
-        
-        # --- INTENTO 1: yt-dlp (El método inteligente) ---
-        print(f"🚀 Intentando descargar con yt-dlp: {url}")
-        comando_yt = [
-            "yt-dlp",
-            "--impersonate", "chrome",
-            "--cookies", self.cookies,
-            "--extractor-args", "youtube:player_client=tv,mweb",
-            "-f", "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[ext=mp4]/best",
-            "--no-playlist",
-            "--merge-output-format", "mp4",
-            "-o", obtenido,
-            url
-        ]
-        
-        try:
-            subprocess.run(comando_yt, capture_output=True, text=True, check=True)
-            if os.path.exists(obtenido) and os.path.getsize(obtenido) > 0:
-                print("Descarga exitosa con yt-dlp")
-                return True
-        except subprocess.CalledProcessError as e:
-            print(f"yt-dlp falló. Error: {e.stderr[:100]}...") 
-        if self.descargar_directo_wget(url, obtenido):
-            print("Descarga exitosa usando WGET (Fallback)")
-            return True
-
-        print(f"Todos los métodos de descarga fallaron para: {url}")
-        return False
-
-class trasmitir:
+# ==============================================================================
+# MÓDULO DE TRANSMISIÓN (Soporta archivos y streams)
+# ==============================================================================
+class Streamer:
     def __init__(self):
-        self.rtsp_url = Config.RTSP_URL
-        self.almacen = Config.ALMACEN
-        self.ffmpeglogs = Config.FFMPEG_LOG
+        self.rtmp_url = Config.RTMP_URL
 
-    def emitir(self, video_path):
-        print(f"🎬 Transmitiendo: {video_path}")
-        comando = [
-            "ffmpeg", "-re", "-i", video_path,
-            "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-async", "1",
-            "-rtsp_transport", "tcp", "-f", "rtsp",
-            "-max_delay", "500000", "-buffer_size", "10M",
-            self.rtsp_url          
-        ]
-        try:
-            with open(self.ffmpeglogs, "a") as log_file:
-                subprocess.run(comando, stdout=subprocess.DEVNULL, stderr=log_file, check=True)
-            print("Reproducción finalizada con éxito")
-            return True
-        except subprocess.CalledProcessError as e:
-            print(f"Error en la transmisión, revisa {self.ffmpeglogs}")
-            return False
-        except Exception as e:
-            print(f"Error en el streamer: {e}")
-            return False
+    def emitir(self, video_data):
+        video_id = video_data['id']
+        url_file = f"{Config.ALMACEN}/next_{video_id}.mp4"
+        url_meta = f"{Config.ALMACEN}/next_{video_id}.url"
+        
+        # 1. Transmisión desde M3U8 (Directo)
+        if os.path.exists(url_meta):
+            with open(url_meta, "r") as f:
+                lines = f.read().splitlines()
+                stream_url, referer = lines[0], lines[1]
+            
+            logger.info(f"🎬 Transmitiendo Stream HLS: {stream_url}")
+            
+            # 🚀 CORRECCIÓN AQUÍ: Añadimos '-re' para que no sature el servidor
+            # Esto obliga a FFmpeg a leer a la velocidad real del video (25fps)
+            comando = [
+                "ffmpeg", "-y", 
+                "-re",                      # <--- CRÍTICO: Lee a velocidad real
+                "-thread_queue_size", "1024",
+                "-referer", referer, 
+                "-user_agent", Config.USER_AGENT,
+                "-i", stream_url,
+                "-vf", Config.VIDEO_SCALE,
+                *Config.FFMPEG_PARAMS, self.rtmp_url
+            ]
+            self._ejecutar_ffmpeg(comando, url_meta)
 
-    def limpiarVideo(self, video_path): 
-        try:
-            if os.path.exists(video_path):
-                os.remove(video_path)
-                print("🧹 Video eliminado de la RAM")
-                return True
-        except Exception as e:
-            print(f"No se pudo borrar el video: {e}")
-            return False
-
-
-class ejecutor:
-    def __init__(self):
-        self.lista = LecturaYEscrituraEnLista()
-        self.downloader = descargarVideos()
-        self.streamer = trasmitir()
-        self.archivo_actual = os.path.join(Config.ALMACEN, "Current.mp4")
-        self.archivo_siguiente = os.path.join(Config.ALMACEN, "siguiente.mp4")
-        self.descargando = False # Bandera para saber si hay un hilo activo
-
-    def hilo_descarga(self, url):
-        """Función que correrá en segundo plano"""
-        print(f"[BG] Iniciando descarga en segundo plano: {url}")
-        if self.downloader.descargar(url):
-            print("[BG] Siguiente video listo en RAM")
+        # 2. Transmisión desde MP4 (Archivo en RAM)
+        elif os.path.exists(url_file):
+            logger.info(f"🎬 Transmitiendo Archivo RAM: {url_file}")
+            
+            # Aquí mantenemos tu optimización de readrate para llenar el caché de MediaMTX
+            comando = [
+                "ffmpeg", "-y", 
+                "-readrate", "2",           # Lee al doble de velocidad para llenar búfer
+                "-i", url_file,
+                "-vf", Config.VIDEO_SCALE,
+                *Config.FFMPEG_PARAMS, self.rtmp_url
+            ]
+            self._ejecutar_ffmpeg(comando, url_file)
         else:
-            print(f"[BG] Falló la descarga de {url}")
-        self.descargando = False
+            logger.error("❌ No se encontró archivo listo para emitir.")
+            return False
+        return True
+
+    def _ejecutar_ffmpeg(self, comando, path_to_clean):
+        try:
+            with open(Config.FFMPEG_LOG, "a") as log:
+                subprocess.run(comando, stdout=subprocess.DEVNULL, stderr=log, check=True)
+            if os.path.exists(path_to_clean):
+                os.remove(path_to_clean)
+            return True
+        except subprocess.CalledProcessError as e:
+            logger.error(f"❌ FFmpeg falló con código {e.returncode}")
+            return False
+    def __init__(self):
+        self.rtmp_url = Config.RTMP_URL
+
+    def emitir(self, video_data):
+        video_id = video_data['id']
+        url_file = f"{Config.ALMACEN}/next_{video_id}.mp4"
+        url_meta = f"{Config.ALMACEN}/next_{video_id}.url"
+        
+        # 1. Transmisión desde M3U8 (Directo)
+        if os.path.exists(url_meta):
+            with open(url_meta, "r") as f:
+                lines = f.read().splitlines()
+                stream_url, referer = lines[0], lines[1]
+            
+            logger.info(f"🎬 Transmitiendo Stream HLS: {stream_url}")
+            comando = [
+                "ffmpeg", "-y", "-thread_queue_size", "1024",
+                "-referer", referer, "-user_agent", Config.USER_AGENT,
+                "-i", stream_url,
+                "-vf", Config.VIDEO_SCALE,
+                *Config.FFMPEG_PARAMS, self.rtmp_url
+            ]
+            self._ejecutar_ffmpeg(comando, url_meta)
+
+        # 2. Transmisión desde MP4 (Archivo en RAM)
+        elif os.path.exists(url_file):
+            logger.info(f"🎬 Transmitiendo Archivo RAM: {url_file}")
+            comando = [
+                "ffmpeg", "-y", "-readrate", "2", 
+                "-i", url_file,
+                "-vf", Config.VIDEO_SCALE,
+                *Config.FFMPEG_PARAMS, self.rtmp_url
+            ]
+            self._ejecutar_ffmpeg(comando, url_file)
+        else:
+            logger.error("❌ No se encontró archivo listo para emitir.")
+            return False
+        return True
+
+    def _ejecutar_ffmpeg(self, comando, path_to_clean):
+        try:
+            with open(Config.FFMPEG_LOG, "a") as log:
+                subprocess.run(comando, stdout=subprocess.DEVNULL, stderr=log, check=True)
+            if os.path.exists(path_to_clean):
+                os.remove(path_to_clean)
+            return True
+        except subprocess.CalledProcessError as e:
+            logger.error(f"❌ FFmpeg falló con código {e.returncode}")
+            return False
+
+# ==============================================================================
+# EJECUTOR PRINCIPAL (Con Prefetching del 20%)
+# ==============================================================================
+class TVExecutor:
+    def __init__(self):
+        self.db = PlaylistDB()
+        self.downloader = Downloader()
+        self.streamer = Streamer()
+        self.stop_event = Event()
+        self.is_downloading = False
+
+    def monitor_progress(self, video_id, duration):
+        """Sigue el progreso de FFmpeg para disparar la siguiente descarga"""
+        # Nota: Para implementarlo real, necesitaríamos leer el stderr de FFmpeg en tiempo real.
+        # Como simplificación robusta, calculamos el tiempo estimado de inicio de descarga.
+        # Si el video dura 1000s, a los 800s disparamos la descarga del siguiente.
+        time.sleep(duration * 0.8) 
+        if not self.is_downloading:
+            self.disparar_siguiente()
+
+    def disparar_siguiente(self):
+        siguiente = self.db.obtener_siguiente()
+        if siguiente:
+            self.is_downloading = True
+            Thread(target=self._descarga_hilo, args=(siguiente,), daemon=True).start()
+
+    def _descarga_hilo(self, video_data):
+        logger.info(f"[Prefetch] Preparando siguiente video: {video_data['titulo']}")
+        self.downloader.descargar(video_data)
+        self.is_downloading = False
 
     def ejecutar(self):
-        print("Iniciando Sistema Autónomo Pro...")
+        logger.info("🚀 Iniciando TV Autónoma v2.0 (Seamless Prefetch)")
         Config.preparar_entorno()
 
-        # 1. Carga inicial (Sincrónica para asegurar que tenemos algo que emitir)
-        url_inicial = self.lista.borradoYavance()
-        if not url_inicial or not self.downloader.descargar(url_inicial):
-            print("No hay URLs o falló la descarga inicial.")
-            return
-        
-        os.rename(self.archivo_siguiente, self.archivo_actual)
+        while not self.stop_event.is_set():
+            # 1. Obtener el video actual
+            actual = self.db.obtener_siguiente()
+            if not actual:
+                logger.warn("🏁 No hay más contenidos en la base de datos.")
+                break
 
-        while True:
-            # --- PASO A: Lanzar descarga del SIGUIENTE video en segundo plano ---
-            if not self.descargando:
-                siguiente_url = self.lista.borradoYavance()
-                if siguiente_url:
-                    self.descargando = True
-                    # Creamos el hilo para que no bloquee la transmisión
-                    thread = Thread(target=self.hilo_descarga, args=(siguiente_url,))
-                    thread.start()
-                else:
-                    print("🏁 No quedan más URLs en la lista.")
+            # 2. Asegurar que el actual esté descargado antes de emitir
+            if not os.path.exists(f"{Config.ALMACEN}/next_{actual['id']}.mp4") and \
+               not os.path.exists(f"{Config.ALMACEN}/next_{actual['id']}.url"):
+                logger.info(f"⏳ Esperando descarga inicial de: {actual['titulo']}")
+                self.downloader.descargar(actual)
 
-            # --- PASO B: Transmitir el video ACTUAL (Esto es bloqueante) ---
-            exito_emision = self.streamer.emitir(self.archivo_actual)
+            # 3. Calcular duración para el prefetch (Solo si es MP4)
+            # Aquí podrías llamar a tu script de Python de duraciones
+            duration = 1200 # Valor por defecto (20 min) si no se conoce
+
+            # 4. Emitir y monitorear en paralelo
+            Thread(target=self.monitor_progress, args=(actual['id'], duration), daemon=True).start()
             
-            # Limpiar video actual
-            self.streamer.limpiarVideo(self.archivo_actual)
-
-            # --- PASO C: Rotación de archivos ---
-            # Si mientras transmitíamos el hilo terminó de descargar el siguiente:
-            if os.path.exists(self.archivo_siguiente):
-                os.rename(self.archivo_siguiente, self.archivo_actual)
-                print("Rotación completada: Siguiente $\rightarrow$ Actual")
+            exito = self.streamer.emitir(actual)
+            
+            if exito:
+                logger.info(f"✅ Finalizado: {actual['titulo']}")
+                self.db.borrar_actual(actual['id'])
             else:
-                print("El siguiente video no terminó de descargar. Esperando...")
-                # Aquí podrías poner un sleep o intentar descargar uno nuevo
-                while not os.path.exists(self.archivo_siguiente):
-                    # Esperamos a que el hilo de descarga termine o manejamos el error
-                    if not self.descargando: 
-                        # Si ya no hay hilo descargando y no hay archivo, tenemos que buscar otra URL
-                        url_emergencia = self.lista.borradoYavance()
-                        if not url_emergencia: break
-                        self.descargando = True
-                        Thread(target=self.hilo_descarga, args=(url_emergencia,)).start()
-                    import time
-                    time.sleep(1)
-                os.rename(self.archivo_siguiente, self.archivo_actual)
+                logger.error("❌ Error en transmisión. Reintentando en 5s...")
+                time.sleep(5)
 
 if __name__ == "__main__":
-    try: 
-        tv = ejecutor()
+    try:
+        tv = TVExecutor()
         tv.ejecutar()
     except KeyboardInterrupt:
-        print("\n Sistema detenido por usuario")
-        if os.path.exists(Config.ALMACEN):
-            for f in os.listdir(Config.ALMACEN):
-                os.remove(os.path.join(Config.ALMACEN, f))
-        print("Adios")
+        logger.info("🛑 Apagando sistema...")
+        # Limpieza final de RAM
+        for f in os.listdir(Config.ALMACEN):
+            os.remove(os.path.join(Config.ALMACEN, f))
