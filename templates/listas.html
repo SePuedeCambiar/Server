@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Lista Completa</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="container py-5">
+    <h1>📋 Lista Completa de Contenidos</h1>
+    <table class="table table-dark">
+        <thead>
+            <tr><th>ID</th><th>Título</th><th>Episodio</th><th>Dominio</th><th>Acción</th></tr>
+        </thead>
+        <tbody>
+            {% for item in playlist %}
+            <tr>
+                <td>{{ item.id }}</td>
+                <td>{{ item.titulo }}</td>
+                <td>{{ item.episodio }}</td>
+                <td>{{ item.dominio }}</td>
+                <td><a href="/delete/{{ item.id }}" class="btn btn-danger btn-sm">Eliminar</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <a href="/" class="btn btn-secondary">Volver al panel</a>
+</body>
+</html>
