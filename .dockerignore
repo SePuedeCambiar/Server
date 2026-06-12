@@ -1,0 +1,7 @@
+node_modules
+venv
+venv312
+.git
+__pycache__
+*.pyc
+.python-version

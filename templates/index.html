@@ -3,159 +3,170 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TV Orchestrator | Panel de Control</title>
+    <title>TV Orchestrator | Dashboard</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <style>
         :root {
-            --bg-color: #0f0f0f;
-            --card-bg: #1a1a1a;
-            --accent-color: #6200ee;
-            --accent-hover: #3700b3;
+            --bg-color: #0a0a0a;
+            --card-bg: #141414;
+            --neon-purple: #bc13fe;
+            --neon-blue: #00d2ff;
             --text-main: #e0e0e0;
             --border-color: #333;
         }
         body { 
             background-color: var(--bg-color); 
             color: var(--text-main); 
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: 'Inter', 'Segoe UI', sans-serif;
         }
-        .card { 
-            background-color: var(--card-bg); 
-            color: white; 
+        .glass-card { 
+            background: var(--card-bg); 
             border: 1px solid var(--border-color); 
-            border-radius: 12px;
+            border-radius: 15px; 
+            box-shadow: 0 8px 32px 0 rgba(0,0,0,0.8);
         }
-        .btn-primary { 
-            background-color: var(--accent-color); 
-            border: none; 
+        .live-banner {
+            background: linear-gradient(90deg, #ff0055, #bc13fe);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 20px;
+            animation: pulse 2s infinite;
+            color: white;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.8; }
+            50% { opacity: 1; }
+            100% { opacity: 0.8; }
+        }
+        .btn-neon-purple {
+            background: var(--neon-purple);
+            color: white;
+            border: none;
             transition: 0.3s;
         }
-        .btn-primary:hover { 
-            background-color: var(--accent-hover); 
-        }
+        .btn-neon-purple:hover { background: #9d0edb; color: white; box-shadow: 0 0 15px var(--neon-purple); }
         .form-control, .form-select {
-            background-color: #252525 !important;
+            background-color: #1f1f1f !important;
             border: 1px solid var(--border-color) !important;
             color: white !important;
         }
-        .form-control:focus, .form-select:focus {
-            border-color: var(--accent-color) !important;
-            box-shadow: 0 0 0 0.25rem rgba(98, 0, 238, 0.25) !important;
+        .table-dark { background-color: #111; border-color: var(--border-color); }
+        .bot-console {
+            background: #000;
+            border: 1px solid var(--neon-blue);
+            border-radius: 10px;
+            padding: 20px;
+            min-height: 300px;
         }
-        .table-dark { 
-            background-color: #121212; 
-            border-color: var(--border-color);
+        .bot-question {
+            color: var(--neon-blue);
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 20px;
         }
-        .badge-scheduled { background-color: #ffc107; color: black; }
-        .badge-queue { background-color: #6c757d; color: white; }
-        .header-title {
-            font-weight: 800;
-            letter-spacing: -1px;
-            color: white;
-            text-shadow: 0 0 10px rgba(98, 0, 238, 0.5);
+        .option-btn {
+            text-align: left;
+            margin-bottom: 8px;
+            transition: 0.2s;
+        }
+        .option-btn:hover {
+            background-color: var(--neon-purple) !important;
+            transform: translateX(10px);
         }
     </style>
 </head>
-<body class="container py-5">
-    <h1 class="text-center mb-5 header-title">📺 TV SYSTEM ORCHESTRATOR</h1>
+<body class="container py-4">
+
+    <!-- BARRA DE ESTADO LIVE -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="live-banner shadow">
+                <span class="me-3">🔴 TRANSMISIÓN EN VIVO: CANAL NOVELA</span>
+                <a href="http://localhost:8888/novela" target="_blank" class="btn btn-sm btn-light fw-bold">📺 ABRIR TV</a>
+            </div>
+        </div>
+    </div>
 
     <div class="row g-4">
-        <!-- COLUMNA IZQUIERDA: CONTROL DE CAPTURA -->
-        <div class="col-md-4">
-            <div class="card p-4 shadow-lg">
-                <h3 class="mb-4">🛠️ Añadir Contenido</h3>
+        <!-- COLUMNA IZQUIERDA: ASISTENTE INTERACTIVO -->
+        <div class="col-md-5">
+            <div class="glass-card p-4 h-100">
+                <h4 class="mb-4">🤖 Asistente de Captura</h4>
                 
-                <form action="/add_content" method="post">
-                    <!-- 1. SELECCIÓN DE SITIO (Cargado dinámicamente) -->
+                <!-- PASO INICIAL: LANZAMIENTO -->
+                <div id="initSection">
                     <div class="mb-3">
-                        <label class="form-label fw-bold">🌐 Sitio (Receta)</label>
-                        <select name="dominio" id="siteSelect" class="form-select" required>
-                            <option value="" selected disabled>Cargando sitios...</option>
-                        </select>
-                        <div class="form-text">Selecciona el sitio donde buscar el anime.</div>
+                        <label class="form-label text-secondary">Sitio de Búsqueda</label>
+                        <select id="siteSelect" class="form-select"></select>
                     </div>
-
-                    <!-- 2. BÚSQUEDA -->
                     <div class="mb-3">
-                        <label class="form-label fw-bold">🔍 Nombre del Contenido</label>
-                        <input type="text" name="keyword" class="form-control" placeholder="Ej: Bleach Sennen Kessen-hen" required>
-                    </div>
-
-                    <!-- 3. TIPO Y EPISODIO -->
-                    <div class="row">
-                        <div class="col-6 mb-3">
-                            <label class="form-label fw-bold">📁 Tipo</label>
-                            <select name="clasificacion" class="form-select">
-                                <option value="SERIE" selected>Serie</option>
-                                <option value="PELICULA_OVA">Película/OVA</option>
-                            </select>
-                        </div>
-                        <div class="col-6 mb-3">
-                            <label class="form-label fw-bold">🔢 Ep/Cap</label>
-                            <input type="number" name="episodio" value="1" min="1" class="form-control">
+                        <label class="form-label text-secondary">Nombre del Contenido</label>
+                        <div class="input-group">
+                            <input type="text" id="keyword" class="form-control" placeholder="Ej: Hunter x Hunter">
+                            <button id="btnStart" class="btn btn-neon-purple" onclick="startBot()">Iniciar Bot</button>
                         </div>
                     </div>
+                </div>
 
-                    <!-- 4. HORARIO -->
-                    <div class="mb-4">
-                        <label class="form-label fw-bold">⏰ Hora de Emisión (Opcional)</label>
-                        <input type="time" name="hora_programada" class="form-control">
-                        <div class="form-text">Vacío = Entra a Cola General inmediatamente.</div>
+                <!-- CONSOLA DE INTERACCIÓN (Aparece cuando el bot está activo) -->
+                <div id="botConsole" style="display:none;">
+                    <div class="bot-console">
+                        <div id="botQuestion" class="bot-question">Iniciando bot...</div>
+                        <div id="botOptions" class="d-grid gap-2">
+                            <!-- Los botones de opciones se cargan aquí dinámicamente -->
+                        </div>
+                        <div id="botInputArea" style="display:none;" class="mt-3">
+                            <div class="input-group">
+                                <input type="text" id="botAnswer" class="form-control" placeholder="Escribe tu respuesta...">
+                                <button class="btn btn-outline-info" onclick="sendAnswer()">Enviar</button>
+                            </div>
+                        </div>
                     </div>
-
-                    <button type="submit" class="btn btn-primary w-100 py-2 fw-bold">🚀 Capturar y Programar</button>
-                </form>
-
-                <hr class="my-4" style="border-color: #444;">
-                
-                <div class="d-grid gap-2">
-                    <a href="/ver_listas" class="btn btn-outline-light">📋 Ver Playlist Completa</a>
-                    <button onclick="location.reload()" class="btn btn-sm btn-link text-muted">🔄 Refrescar Estado</button>
+                    <button class="btn btn-sm btn-link text-muted w-100 mt-3" onclick="location.reload()">❌ Cancelar y Reiniciar</button>
                 </div>
             </div>
         </div>
 
-        <!-- COLUMNA DERECHA: ESTADO ACTUAL -->
-        <div class="col-md-8">
-            <div class="card p-4 shadow-lg">
+        <!-- COLUMNA DERECHA: COLA DE REPRODUCCIÓN -->
+        <div class="col-md-7">
+            <div class="glass-card p-4">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h3 class="m-0">🚀 Últimos Agregados</h3>
-                    <span class="badge bg-info text-dark">Sincronizado</span>
+                    <h4 class="m-0">📋 Cola de Reproducción</h4>
+                    <a href="/ver_listas" class="btn btn-sm btn-outline-secondary">Ver Todo</a>
                 </div>
-                <hr style="border-color: #444;">
-                
                 <div class="table-responsive">
                     <table class="table table-dark table-hover align-middle">
                         <thead>
                             <tr>
-                                <th>ID</th>
                                 <th>Título</th>
                                 <th>Ep</th>
-                                <th>Programación</th>
-                                <th>Dominio</th>
+                                <th>Estado</th>
+                                <th>Hora</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="queueBody">
                             {% for item in playlist %}
                             <tr>
-                                <td><small class="text-muted">{{ item.id }}</small></td>
                                 <td class="fw-bold">{{ item.titulo }}</td>
                                 <td>{{ item.episodio }}</td>
                                 <td>
-                                    {% if item.hora_programada %}
-                                        <span class="badge badge-scheduled">⏰ {{ item.hora_programada }}</span>
+                                    {% if item.reproducido == 1 %}
+                                        <span class="badge bg-success">✅ Listo</span>
                                     {% else %}
-                                        <span class="badge badge-queue">📦 Cola</span>
+                                        <span class="badge bg-warning text-dark">⏳ Pendiente</span>
                                     {% endif %}
                                 </td>
-                                <td><small class="text-muted">{{ item.dominio }}</small></td>
+                                <td>
+                                    {% if item.hora_programada %}
+                                        <span class="badge bg-info text-dark">⏰ {{ item.hora_programada }}</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">📦 Cola</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% endfor %}
-                            {% if not playlist %}
-                            <tr>
-                                <td colspan="5" class="text-center text-muted py-4">No hay contenidos en la lista.</td>
-                            </tr>
-                            {% endif %}
                         </tbody>
                     </table>
                 </div>
@@ -163,33 +174,100 @@
         </div>
     </div>
 
-    <!-- SCRIPTS -->
     <script>
-        // Esta función llena el selector de sitios llamando a la API de manager.py
+        // 1. Cargar sitios disponibles al iniciar
         async function loadSites() {
             try {
-                const response = await fetch('/api/sites');
-                const data = await response.json();
+                const res = await fetch('/api/sites');
+                const data = await res.json();
                 const select = document.getElementById('siteSelect');
-                
-                if (data.sites && data.sites.length > 0) {
-                    select.innerHTML = '<option value="" selected disabled>Selecciona un sitio...</option>';
-                    data.sites.forEach(site => {
-                        const option = document.createElement('option');
-                        option.value = site;
-                        option.innerText = site;
-                        select.appendChild(option);
-                    });
-                } else {
-                    select.innerHTML = '<option value="">No hay recetas disponibles</option>';
-                }
-            } catch (error) {
-                console.error("Error cargando sitios:", error);
-                document.getElementById('siteSelect').innerHTML = '<option value="">Error al cargar sitios</option>';
-            }
+                select.innerHTML = data.sites.map(s => `<option value="${s}">${s}</option>`).join('');
+            } catch (e) { console.error("Error cargando sitios", e); }
         }
 
-        // Ejecutar al cargar la página
+        // 2. Iniciar el Bot
+        async function startBot() {
+            const site = document.getElementById('siteSelect').value;
+            const kw = document.getElementById('keyword').value;
+            if(!kw) return alert("Escribe el nombre del anime");
+
+            // Llamamos al endpoint de manager.py que lanza el proceso de Node.js
+            await fetch(`/add_content?dominio=${site}&keyword=${kw}`);
+            
+            document.getElementById('initSection').style.display = 'none';
+            document.getElementById('botConsole').style.display = 'block';
+            
+            // Empezamos a escuchar al bot cada 2 segundos
+            startPolling();
+        }
+
+        // 3. Polling: Escuchar el estado del bot
+        async function startPolling() {
+            setInterval(async () => {
+                try {
+                    const res = await fetch('/api/bot_status');
+                    const state = await res.json();
+                    
+                    const qText = document.getElementById('botQuestion');
+                    const options = document.getElementById('botOptions');
+                    const inputArea = document.getElementById('botInputArea');
+
+                    // Lógica de estados del Bot
+                    if(state.estado === 'SELECT_SHOW') {
+                        qText.innerText = "🔍 Selecciona la serie correcta:";
+                        options.innerHTML = state.resultados.map((r, i) => 
+                            `<button class="btn btn-outline-light option-btn" onclick="sendSimpleAnswer('${i+1}')">${i+1}. ${r.text}</button>`
+                        ).join('');
+                        inputArea.style.display = 'none';
+                    } 
+                    else if(state.estado === 'SELECT_TYPE') {
+                        qText.innerText = `🎬 ¿"${state.titulo}" es Serie o Película?`;
+                        options.innerHTML = `
+                            <button class="btn btn-outline-light option-btn" onclick="sendSimpleAnswer('S')">Serie</button>
+                            <button class="btn btn-outline-light option-btn" onclick="sendSimpleAnswer('P')">Película/OVA</button>
+                        `;
+                        inputArea.style.display = 'none';
+                    } 
+                    else if(state.estado === 'SELECT_EPISODE') {
+                        qText.innerText = `🔢 Indica el número de capítulo de ${state.titulo}:`;
+                        options.innerHTML = '';
+                        inputArea.style.display = 'block';
+                    } 
+                    else if(state.estado === 'ERROR') {
+                        qText.innerText = "❌ Error: " + state.message;
+                        options.innerHTML = '<button class="btn btn-danger w-100" onclick="location.reload()">Reiniciar</button>';
+                        inputArea.style.display = 'none';
+                    } 
+                    else if(state.estado === 'IDLE') {
+                        qText.innerText = "✅ ¡Éxito! El contenido ha sido capturado y añadido.";
+                        options.innerHTML = '<button class="btn btn-success w-100" onclick="location.reload()">Nueva Búsqueda</button>';
+                        inputArea.style.display = 'none';
+                    }
+                } catch (e) { console.error("Error en polling", e); }
+            }, 2000);
+        }
+
+        // 4. Enviar respuesta simple (botones)
+        async function sendSimpleAnswer(val) {
+            await fetch('/api/bot_answer', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ respuesta: val })
+            });
+        }
+
+        // 5. Enviar respuesta de texto (capítulo)
+        async function sendAnswer() {
+            const val = document.getElementById('botAnswer').value;
+            if(!val) return;
+            await fetch('/api/bot_answer', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ respuesta: val })
+            });
+            document.getElementById('botAnswer').value = '';
+        }
+
         window.onload = loadSites;
     </script>
 </body>
