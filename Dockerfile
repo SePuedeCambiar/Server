@@ -5,15 +5,13 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 1. Instalar dependencias esenciales del sistema, herramientas de video y wget/ca-certificates
-RUN apt-get update && apt-get install -y \
-    python3 python3-pip \
-    curl ffmpeg wget ca-certificates \
-    xvfb fluxbox xterm \
-    x11vnc novnc websockify \
-    x11-xserver-utils \
-    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 libasound2 libpangocairo-1.0-0 libxss1 libgtk-3-0 \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-pip python3-venv \
+    curl ffmpeg wget ca-certificates chromium \
+    # Librerías mínimas para que Chromium arranque en modo headless
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
-
 # 2. Descargar e instalar Google Chrome Stable oficial de Google (REQUERIDO para puppeteer-real-browser)
 RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
     apt-get update && apt-get install -y ./google-chrome-stable_current_amd64.deb && \

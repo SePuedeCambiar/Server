@@ -186,7 +186,6 @@ async def add_content(request: Request, hora_programada: str = Form(None)):
 
     # 2. Configuración del entorno
     env = os.environ.copy()
-    env["DISPLAY"] = ":0"
 
     comando_node = ["node", "reproductor.js"]
     if hora_programada:

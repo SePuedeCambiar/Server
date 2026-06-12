@@ -49,7 +49,7 @@ function initDatabase() {
 // ============================================================================
 // 2. UTILIDADES Y CONFIGURACIÓN GENERAL
 // ============================================================================
-const MODO_INVISIBLE = false; // Cambiar a true para modo headless total
+const MODO_INVISIBLE = true; // Cambiar a true para modo headless total
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const pregunta = (texto) => new Promise((resolve) => rl.question(texto, resolve));
 
