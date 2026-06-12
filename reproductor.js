@@ -6,9 +6,7 @@ const Database = require('better-sqlite3');
 const db = new Database('playlist.db');
 db.pragma('journal_mode = WAL');
 
-// ============================================================================
-// SISTEMA de COMUNICACIÓN CON EL PANEL WEB
-// ============================================================================
+// Archivo donde el bot deja sus preguntas y lee tus respuestas
 const STATE_FILE = path.join(__dirname, 'configs', 'bot_state.json');
 
 async function enviarEstado(estado, datos = {}) {
@@ -27,7 +25,7 @@ async function esperarRespuesta(preguntaTexto) {
                 if (state.respuesta !== undefined) {
                     const resp = state.respuesta;
                     clearInterval(interval);
-                    // Limpiamos la respuesta para no leer la misma dos veces
+                    // Limpiamos la respuesta para que no se repita
                     const newState = { ...state, respuesta: undefined };
                     fs.writeFileSync(STATE_FILE, JSON.stringify(newState, null, 2));
                     resolve(resp);
@@ -37,17 +35,12 @@ async function esperarRespuesta(preguntaTexto) {
     });
 }
 
-// ============================================================================
-// LÓGICA DE NAVEGACIÓN (Casi igual a la original)
-// ============================================================================
 async function esperarBypass(page) {
     for (let i = 0; i < 20; i++) {
         try {
             const titulo = await page.title().catch(() => '');
             const url = page.url();
-            if (!titulo.toLowerCase().includes('just a moment') && !url.includes('challenges.cloudflare.com')) {
-                return true;
-            }
+            if (!titulo.toLowerCase().includes('just a moment') && !url.includes('challenges.cloudflare.com')) return true;
             await new Promise(r => setTimeout(r, 3000));
         } catch (e) {}
     }
@@ -77,21 +70,15 @@ async function activarVideoSandbox(page) {
     return false;
 }
 
-// ============================================================================
-// ORQUESTADOR FINAL
-// ============================================================================
 async function main() {
     const args = process.argv.slice(2);
     const ARG_DOMINIO = args.find(arg => arg.startsWith('--dominio='))?.split('=')[1];
     const ARG_KEYWORD = args.find(arg => arg.startsWith('--keyword='))?.split('=')[1];
 
-    if (!ARG_DOMINIO || !ARG_KEYWORD) {
-        console.error("❌ Faltan argumentos: --dominio y --keyword");
-        process.exit(1);
-    }
+    if (!ARG_DOMINIO || !ARG_KEYWORD) process.exit(1);
 
     const { browser, page } = await connect({
-        headless: true,
+        headless: true, 
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
         turnstile: true
     });
@@ -125,7 +112,7 @@ async function main() {
 
         if (resultados.length === 0) throw new Error("No se encontraron resultados.");
 
-        // --- PASO 1: Seleccionar Show ---
+        // --- INTERACCIÓN CON HTML: Paso 1 (Show) ---
         await enviarEstado('SELECT_SHOW', { resultados });
         const seleccionIdx = parseInt(await esperarRespuesta("Selecciona el show")) - 1;
         const show = resultados[seleccionIdx] || resultados[0];
@@ -133,14 +120,14 @@ async function main() {
         await page.goto(show.href, { waitUntil: 'domcontentloaded' });
         await esperarBypass(page);
 
-        // --- PASO 2: Serie o Película ---
+        // --- INTERACCIÓN CON HTML: Paso 2 (Tipo) ---
         await enviarEstado('SELECT_TYPE', { titulo: show.text });
         const tipo = await esperarRespuesta("¿Serie o Película?");
         const clasificacionFinal = (tipo === 'P') ? 'PELICULA_OVA' : 'SERIE';
 
         let targetUrl = show.href;
         if (clasificacionFinal === 'SERIE') {
-            // --- PASO 3: Capítulo ---
+            // --- INTERACCIÓN CON HTML: Paso 3 (Capítulo) ---
             await enviarEstado('SELECT_EPISODE', { titulo: show.text });
             const ep = await esperarRespuesta("Número de capítulo");
             const urlLimpia = show.href.replace(/\/$/, "");
@@ -154,10 +141,9 @@ async function main() {
         if (global.videoCapturado) {
             db.prepare('INSERT INTO contenidos (titulo, clasificacion, episodio, url_final, url_base, dominio, reproducido) VALUES (?, ?, ?, ?, ?, ?, 0)')
               .run(ARG_KEYWORD, clasificacionFinal, 1, global.videoCapturado, show.href, ARG_DOMINIO);
-            console.log("✅ Guardado en DB");
+            await enviarEstado('IDLE', { message: '¡Éxito! Video guardado.' });
         }
     } catch (e) {
-        console.error("❌ Error:", e.message);
         await enviarEstado('ERROR', { message: e.message });
     } finally {
         await browser.close();

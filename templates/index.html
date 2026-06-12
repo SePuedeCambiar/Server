@@ -2,26 +2,25 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1/ cutest">
     <title>TV Orchestrator | Dashboard</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <style>
         :root {
-            --bg-color: #0a0a0a;
+            --bg-dark: #0a0a0a;
             --card-bg: #141414;
             --neon-purple: #bc13fe;
             --neon-blue: #00d2ff;
-            --text-main: #e0e0e0;
-            --border-color: #333;
+            --text-gray: #a0a0a0;
         }
         body { 
-            background-color: var(--bg-color); 
-            color: var(--text-main); 
-            font-family: 'Inter', 'Segoe UI', sans-serif;
+            background-color: var(--bg-dark); 
+            color: white; 
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
         }
         .glass-card { 
             background: var(--card-bg); 
-            border: 1px solid var(--border-color); 
+            border: 1px solid #333; 
             border-radius: 15px; 
             box-shadow: 0 8px 32px 0 rgba(0,0,0,0.8);
         }
@@ -33,7 +32,6 @@
             font-weight: bold;
             margin-bottom: 20px;
             animation: pulse 2s infinite;
-            color: white;
         }
         @keyframes pulse {
             0% { opacity: 0.8; }
@@ -46,85 +44,72 @@
             border: none;
             transition: 0.3s;
         }
-        .btn-neon-purple:hover { background: #9d0edb; color: white; box-shadow: 0 0 15px var(--neon-purple); }
+        .btn-neon-purple:hover { 
+            background: #9d0edb; 
+            color: white; 
+            box-shadow: 0 0 15px var(--neon-purple); 
+        }
         .form-control, .form-select {
             background-color: #1f1f1f !important;
-            border: 1px solid var(--border-color) !important;
+            border: 1px solid #333 !important;
             color: white !important;
         }
-        .table-dark { background-color: #111; border-color: var(--border-color); }
-        .bot-console {
-            background: #000;
-            border: 1px solid var(--neon-blue);
-            border-radius: 10px;
-            padding: 20px;
-            min-height: 300px;
-        }
-        .bot-question {
+        .table-dark { --bs-table-bg: #111; }
+        .bot-msg {
             color: var(--neon-blue);
-            font-size: 1.1rem;
             font-weight: bold;
-            margin-bottom: 20px;
-        }
-        .option-btn {
-            text-align: left;
-            margin-bottom: 8px;
-            transition: 0.2s;
-        }
-        .option-btn:hover {
-            background-color: var(--neon-purple) !important;
-            transform: translateX(10px);
+            margin-bottom: 15px;
+            display: block;
         }
     </style>
 </head>
 <body class="container py-4">
 
-    <!-- BARRA DE ESTADO LIVE -->
+    <!-- SECCIÓN 1: ESTADO LIVE -->
     <div class="row mb-4">
         <div class="col-12">
             <div class="live-banner shadow">
-                <span class="me-3">🔴 TRANSMISIÓN EN VIVO: CANAL NOVELA</span>
-                <a href="http://localhost:8888/novela" target="_blank" class="btn btn-sm btn-light fw-bold">📺 ABRIR TV</a>
+                <span class="me-3">🔴 ESTADO: AL AIRE (SISTEMA ACTIVO)</span>
+                <a href="http://localhost:8888/novela" target="_blank" class="btn btn-sm btn-light fw-bold">📺 VER TRANSMISIÓN AHORA</a>
             </div>
         </div>
     </div>
 
     <div class="row g-4">
-        <!-- COLUMNA IZQUIERDA: ASISTENTE INTERACTIVO -->
+        <!-- COLUMNA IZQUIERDA: ASISTENTE DE CAPTURA -->
         <div class="col-md-5">
             <div class="glass-card p-4 h-100">
                 <h4 class="mb-4">🤖 Asistente de Captura</h4>
                 
-                <!-- PASO INICIAL: LANZAMIENTO -->
-                <div id="initSection">
+                <!-- PASO 0: INICIO de Búsqueda -->
+                <div id="initSearch">
                     <div class="mb-3">
-                        <label class="form-label text-secondary">Sitio de Búsqueda</label>
+                        <label class="form-label text-gray">Sitio de Búsqueda</label>
                         <select id="siteSelect" class="form-select"></select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label text-secondary">Nombre del Contenido</label>
+                        <label class="form-label text-gray">Nombre del Anime/Película</label>
                         <div class="input-group">
-                            <input type="text" id="keyword" class="form-control" placeholder="Ej: Hunter x Hunter">
-                            <button id="btnStart" class="btn btn-neon-purple" onclick="startBot()">Iniciar Bot</button>
+                            <input type="text" id="keyword" class="form-control" placeholder="Ej: Bleach">
+                            <button id="btnStart" class="btn btn-neon-purple" onclick="startBot()">Lanzar Bot</button>
                         </div>
                     </div>
                 </div>
 
-                <!-- CONSOLA DE INTERACCIÓN (Aparece cuando el bot está activo) -->
-                <div id="botConsole" style="display:none;">
-                    <div class="bot-console">
-                        <div id="botQuestion" class="bot-question">Iniciando bot...</div>
-                        <div id="botOptions" class="d-grid gap-2">
-                            <!-- Los botones de opciones se cargan aquí dinámicamente -->
-                        </div>
-                        <div id="botInputArea" style="display:none;" class="mt-3">
-                            <div class="input-group">
-                                <input type="text" id="botAnswer" class="form-control" placeholder="Escribe tu respuesta...">
-                                <button class="btn btn-outline-info" onclick="sendAnswer()">Enviar</button>
-                            </div>
+                <!-- PASO DINÁMICO: Consola de Interacción con el Bot -->
+                <div id="botConsole" style="display:none;" class="mt-4 p-3 border border-info rounded bg-dark">
+                    <span class="bot-msg" id="botQuestion">Iniciando bot...</span>
+                    
+                    <!-- Contenedor de botones (Resultados, Serie/Peli) -->
+                    <div id="botOptions" class="d-grid gap-2"></div>
+                    
+                    <!-- Contenedor de input (Capítulo) -->
+                    <div id="botInputArea" class="mt-3" style="display:none;">
+                        <div class="input-group">
+                            <input type="text" id="botAnswer" class="form-control" placeholder="Escribe respuesta...">
+                            <button class="btn btn-outline-info" onclick="sendAnswer()">Enviar</button>
                         </div>
                     </div>
-                    <button class="btn btn-sm btn-link text-muted w-100 mt-3" onclick="location.reload()">❌ Cancelar y Reiniciar</button>
                 </div>
             </div>
         </div>
@@ -133,7 +118,7 @@
         <div class="col-md-7">
             <div class="glass-card p-4">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4 class="m-0">📋 Cola de Reproducción</h4>
+                    <h4>📋 Cola de Reproducción</h4>
                     <a href="/ver_listas" class="btn btn-sm btn-outline-secondary">Ver Todo</a>
                 </div>
                 <div class="table-responsive">
@@ -147,26 +132,7 @@
                             </tr>
                         </thead>
                         <tbody id="queueBody">
-                            {% for item in playlist %}
-                            <tr>
-                                <td class="fw-bold">{{ item.titulo }}</td>
-                                <td>{{ item.episodio }}</td>
-                                <td>
-                                    {% if item.reproducido == 1 %}
-                                        <span class="badge bg-success">✅ Listo</span>
-                                    {% else %}
-                                        <span class="badge bg-warning text-dark">⏳ Pendiente</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if item.hora_programada %}
-                                        <span class="badge bg-info text-dark">⏰ {{ item.hora_programada }}</span>
-                                    {% else %}
-                                        <span class="badge bg-secondary">📦 Cola</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
+                            <!-- Cargado por JS -->
                         </tbody>
                     </table>
                 </div>
@@ -175,7 +141,7 @@
     </div>
 
     <script>
-        // 1. Cargar sitios disponibles al iniciar
+        // Carga los sitios disponibles al iniciar
         async function loadSites() {
             try {
                 const res = await fetch('/api/sites');
@@ -185,23 +151,47 @@
             } catch (e) { console.error("Error cargando sitios", e); }
         }
 
-        // 2. Iniciar el Bot
+        // Lanza el bot mediante el Manager
         async function startBot() {
             const site = document.getElementById('siteSelect').value;
             const kw = document.getElementById('keyword').value;
-            if(!kw) return alert("Escribe el nombre del anime");
+            if(!kw) return alert("Por favor escribe un nombre para buscar");
 
-            // Llamamos al endpoint de manager.py que lanza el proceso de Node.js
-            await fetch(`/add_content?dominio=${site}&keyword=${kw}`);
-            
-            document.getElementById('initSection').style.display = 'none';
+            // Enviamos la petición POST al manager
+            await fetch('/add_content', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `dominio=${site}&keyword=${kw}`
+            });
+
+            // Cambiamos la interfaz a modo "Consola"
+            document.getElementById('initSearch').style.display = 'none';
             document.getElementById('botConsole').style.display = 'block';
-            
-            // Empezamos a escuchar al bot cada 2 segundos
             startPolling();
         }
 
-        // 3. Polling: Escuchar el estado del bot
+        // Envía una respuesta de texto (ej: el número de capítulo)
+        async function sendAnswer() {
+            const resp = document.getElementById('botAnswer').value;
+            if(!resp) return;
+            await fetch('/api/bot_answer', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ respuesta: resp })
+            });
+            document.getElementById('botAnswer').value = '';
+        }
+
+        // Envía una respuesta rápida (click en botón)
+        async function sendSimpleAnswer(val) {
+            await fetch('/api/bot_answer', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ respuesta: val })
+            });
+        }
+
+        // El "Corazón" del Panel: Pregunta al servidor cada 2 seg qué quiere el bot
         async function startPolling() {
             setInterval(async () => {
                 try {
@@ -212,63 +202,60 @@
                     const options = document.getElementById('botOptions');
                     const inputArea = document.getElementById('botInputArea');
 
-                    // Lógica de estados del Bot
                     if(state.estado === 'SELECT_SHOW') {
-                        qText.innerText = "🔍 Selecciona la serie correcta:";
+                        qText.innerText = "🔎 Resultados encontrados. Selecciona el correcto:";
                         options.innerHTML = state.resultados.map((r, i) => 
-                            `<button class="btn btn-outline-light option-btn" onclick="sendSimpleAnswer('${i+1}')">${i+1}. ${r.text}</button>`
+                            `<button class="btn btn-sm btn-outline-light text-start" onclick="sendSimpleAnswer('${i+1}')">${i+1}. ${r.text}</button>`
                         ).join('');
                         inputArea.style.display = 'none';
                     } 
                     else if(state.estado === 'SELECT_TYPE') {
-                        qText.innerText = `🎬 ¿"${state.titulo}" es Serie o Película?`;
+                        qText.innerText = `📌 ¿${state.titulo} es una Serie o una Película?`;
                         options.innerHTML = `
-                            <button class="btn btn-outline-light option-btn" onclick="sendSimpleAnswer('S')">Serie</button>
-                            <button class="btn btn-outline-light option-btn" onclick="sendSimpleAnswer('P')">Película/OVA</button>
+                            <button class="btn btn-sm btn-outline-light" onclick="sendSimpleAnswer('S')">Serie</button>
+                            <button class="btn btn-sm btn-outline-light" onclick="sendSimpleAnswer('P')">Película/OVA</button>
                         `;
                         inputArea.style.display = 'none';
                     } 
                     else if(state.estado === 'SELECT_EPISODE') {
-                        qText.innerText = `🔢 Indica el número de capítulo de ${state.titulo}:`;
+                        qText.innerText = `🔢 Indica el número de episodio de ${state.titulo}:`;
                         options.innerHTML = '';
                         inputArea.style.display = 'block';
                     } 
                     else if(state.estado === 'ERROR') {
                         qText.innerText = "❌ Error: " + state.message;
-                        options.innerHTML = '<button class="btn btn-danger w-100" onclick="location.reload()">Reiniciar</button>';
+                        options.innerHTML = '<button class="btn btn-danger" onclick="location.reload()">Reiniciar Bot</button>';
                         inputArea.style.display = 'none';
                     } 
                     else if(state.estado === 'IDLE') {
-                        qText.innerText = "✅ ¡Éxito! El contenido ha sido capturado y añadido.";
-                        options.innerHTML = '<button class="btn btn-success w-100" onclick="location.reload()">Nueva Búsqueda</button>';
+                        qText.innerText = "✅ ¡Captura completada con éxito!";
+                        options.innerHTML = '<button class="btn btn-success" onclick="location.reload()">Nueva Búsqueda</button>';
                         inputArea.style.display = 'none';
                     }
-                } catch (e) { console.error("Error en polling", e); }
+                } catch (e) { console.error("Error en polling:", e); }
             }, 2000);
         }
 
-        // 4. Enviar respuesta simple (botones)
-        async function sendSimpleAnswer(val) {
-            await fetch('/api/bot_answer', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ respuesta: val })
-            });
+        // Actualiza la cola de reproducción cada 10 segundos
+        async function updateQueue() {
+            try {
+                const res = await fetch('/');
+                const text = await res.text();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(text, 'text/html');
+                const rows = doc.querySelectorAll('tbody tr');
+                
+                const body = document.getElementById('queueBody');
+                body.innerHTML = '';
+                rows.forEach(row => { body.innerHTML += row.outerHTML; });
+            } catch (e) { console.error("Error actualizando cola", e); }
         }
 
-        // 5. Enviar respuesta de texto (capítulo)
-        async function sendAnswer() {
-            const val = document.getElementById('botAnswer').value;
-            if(!val) return;
-            await fetch('/api/bot_answer', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ respuesta: val })
-            });
-            document.getElementById('botAnswer').value = '';
-        }
-
-        window.onload = loadSites;
+        window.onload = () => { 
+            loadSites(); 
+            updateQueue(); 
+            setInterval(updateQueue, 10000); 
+        };
     </script>
 </body>
 </html>

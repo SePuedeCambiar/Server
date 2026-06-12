@@ -21,26 +21,26 @@ logger = logging.getLogger("TV_Manager")
 
 app = FastAPI()
 
-# Variable global para evitar múltiples instancias del bot en el Celeron
+# Variable global para evitar lanzar múltiples bots y saturar la RAM del Celeron
 proceso_grabador = None
 
 # ==============================================================================
-# CONFIGURACIÓN DE RUTAS Y CORS
+# CONFIGURACIÓN DE SEGURIDAD Y RUTAS
 # ==============================================================================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
     allow_credentials=True,
-    allow_methods=["*"], 
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'playlist.db')
 CONFIGS_DIR = os.path.join(BASE_DIR, 'configs')
-STATE_FILE = os.path.join(CONFIGS_DIR, 'bot_state.json') # Archivo de comunicación
 os.makedirs(CONFIGS_DIR, exist_ok=True)
 
+# Configuración de plantillas HTML
 jinja_env = jinja2.Environment(
     loader=jinja2.FileSystemLoader(os.path.join(BASE_DIR, 'templates')),
     cache_size=0
@@ -61,46 +61,7 @@ def get_db_connection():
         return None
 
 # ==============================================================================
-# ENDPOINTS DE COMUNICACIÓN CON EL BOT (EL "PUENTE")
-# ==============================================================================
-
-@app.get("/api/bot_status")
-async def bot_status():
-    """Lee el archivo JSON donde el bot escribe sus preguntas"""
-    if os.path.exists(STATE_FILE):
-        try:
-            with open(STATE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Error leyendo bot_state.json: {e}")
-            return {"estado": "ERROR", "message": "Error leyendo estado"}
-    return {"estado": "IDLE"}
-
-@app.post("/api/bot_answer")
-async def bot_answer(request: Request):
-    """Escribe la respuesta del usuario en el JSON para que el bot la lea"""
-    try:
-        data = await request.json()
-        respuesta = data.get("respuesta")
-        
-        if os.path.exists(STATE_FILE):
-            with open(STATE_FILE, "r", encoding="utf-8") as f:
-                state = json.load(f)
-            
-            state["respuesta"] = respuesta # Inyectamos la respuesta
-            with open(STATE_FILE, "w", encoding="utf-8") as f:
-                json.dump(state, f, indent=2)
-            
-            logger.info(f"📩 Respuesta enviada al bot: {respuesta}")
-            return {"status": "success"}
-        
-        return {"status": "error", "message": "Bot no activo o archivo de estado no encontrado"}
-    except Exception as e:
-        logger.error(f"Error enviando respuesta: {e}")
-        return {"status": "error", "message": str(e)}
-
-# ==============================================================================
-# API PARA LA EXTENSIÓN Y GESTIÓN DE SITIOS
+# API PARA EL BOT Y LA EXTENSIÓN (Comunicación)
 # ==============================================================================
 
 @app.get("/api/ping")
@@ -109,27 +70,69 @@ async def ping():
 
 @app.get("/api/sites")
 async def get_sites():
-    """Devuelve los dominios con recetas cargadas"""
+    """Devuelve la lista de dominios que tienen una receta cargada"""
     try:
         archivos = os.listdir(CONFIGS_DIR)
         dominios = [f.replace("_receta.json", "") for f in archivos if f.endswith("_receta.json")]
         return {"sites": dominios}
     except Exception as e:
+        logger.error(f"Error leyendo recetas: {e}")
         return {"sites": [], "error": str(e)}
+
+@app.get("/api/bot_status")
+async def bot_status():
+    """Lee el archivo de estado donde el bot deja sus preguntas"""
+    state_path = os.path.join(CONFIGS_DIR, "bot_state.json")
+    if os.path.exists(state_path):
+        with open(state_path, "r") as f:
+            return json.load(f)
+    return {"estado": "IDLE"}
+
+@app.post("/api/bot_answer")
+async def bot_answer(request: Request):
+    """Envía la respuesta del usuario al bot a través del archivo de estado"""
+    try:
+        data = await request.json()
+        respuesta = data.get("respuesta")
+        state_path = os.path.join(CONFIGS_DIR, "bot_state.json")
+        
+        if os.path.exists(state_path):
+            with open(state_path, "r") as f:
+                state = json.load(f)
+            
+            state["respuesta"] = respuesta
+            with open(state_path, "w") as f:
+                json.dump(state, f, indent=2)
+            return {"status": "success"}
+        return {"status": "error", "message": "El bot no está activo"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.post("/api/upload_recipe")
 async def upload_recipe(request: Request):
+    """Permite que la extensión de Chrome guarde nuevas recetas"""
     try:
         data = await request.json()
         dominio = data.get("dominio")
-        if not dominio: return {"status": "error", "message": "Dominio obligatorio"}
-        
+        if not dominio: return {"status": "error", "message": "El dominio es obligatorio."}
         file_path = os.path.join(CONFIGS_DIR, f"{dominio}_receta.json")
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         return {"status": "success", "message": f"Receta de {dominio} guardada."}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+@app.get("/api/get_last_link")
+async def get_last_link():
+    conn = get_db_connection()
+    if conn:
+        try:
+            row = conn.execute("SELECT url_final FROM contenidos WHERE url_final IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
+            if row: return {"url": row['url_final']}
+            return {"url": "No se han capturado videos aún."}
+        finally:
+            conn.close()
+    return {"url": "Error de conexión a la base de datos."}
 
 # ==============================================================================
 # RUTAS DEL PANEL DE CONTROL (HTML)
@@ -161,35 +164,54 @@ async def ver_listas(request: Request):
 
 @app.post("/add_content")
 async def add_content(dominio: str = Form(...), keyword: str = Form(...)):
-    """Lanza el bot interactivo en segundo plano"""
+    """
+    Lanza el Bot de captura en modo interactivo. 
+    El bot se comunicará con el usuario vía /api/bot_status y /api/bot_answer.
+    """
     global proceso_grabador
 
-    # Protección de RAM Celeron
+    # PROTECCIÓN DE RAM: No lanzar más de un bot a la vez
     if proceso_grabador is not None:
         proceso_grabador.poll()
         if proceso_grabador.returncode is None:
-            return HTMLResponse(content="<h2>⚠️ Bot Ocupado</h2><p>Espera a que termine la captura actual.</p><a href='/'>Volver</a>", status_code=429)
+            return HTMLResponse(content="<h2>⚠️ El Bot ya está trabajando. Espera a que termine.</h2><a href='/'>Volver</a>", status_code=429)
 
-    # Limpiar estado anterior antes de empezar
-    if os.path.exists(STATE_FILE):
-        os.remove(STATE_FILE)
-
-    env = os.environ.copy()
-    env["DISPLAY"] = ":0"
-
-    # Lanzamos el bot con los argumentos básicos. El resto se maneja vía JSON.
-    comando_node = ["node", "reproductor.js", f"--dominio={dominio}", f"--keyword={keyword}"]
+    # Argumentos para el reproductor.js
+    comando_node = [
+        "node", "reproductor.js",
+        f"--dominio={dominio}",
+        f"--keyword={keyword}"
+    ]
 
     try:
-        proceso_grabador = subprocess.Popen(comando_node, env=env)
-        logger.info(f"🤖 Bot interactivo lanzado para: {keyword}")
+        # Lanzamos el proceso en segundo plano
+        proceso_grabador = subprocess.Popen(comando_node)
+        logger.info(f"🤖 Bot de captura lanzado para: {keyword} en {dominio}")
         return HTMLResponse(content="<h2>🚀 Bot Iniciado</h2><p>Mira la consola en el panel para interactuar con el bot.</p><a href='/'>Volver</a>")
     except Exception as e:
-        logger.error(f"Error lanzando bot: {e}")
-        return HTMLResponse(content=f"Error: {e}", status_code=500)
+        logger.error(f"Error al lanzar el bot: {e}")
+        return HTMLResponse(content=f"Error interno: {e}", status_code=500)
+
+@app.post("/add_site")
+async def add_site(dominio: str = Form(...), nombre: str = Form(...)):
+    receta_basica = {"dominio": dominio, "name": nombre, "metadata": {"version": "1.0"}}
+    with open(os.path.join(CONFIGS_DIR, f"{dominio}_receta.json"), "w") as f:
+        json.dump(receta_basica, f, indent=2)
+    return RedirectResponse(url="/", status_code=303)
 
 @app.get("/delete/{video_id}")
 async def delete_video(video_id: int):
     conn = get_db_connection()
     if conn:
-        conn
+        conn.execute("DELETE FROM contenidos WHERE id = ?", (video_id,))
+        conn.commit()
+        conn.close()
+    return RedirectResponse(url="/ver_listas", status_code=303)
+
+# ==============================================================================
+# INICIO DEL SERVIDOR
+# ==============================================================================
+if __name__ == "__main__":
+    import uvicorn
+    logger.info("🚀 Iniciando TV Manager en puerto 9001...")
+    uvicorn.run(app, host="0.0.0.0", port=9001)
