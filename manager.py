@@ -21,20 +21,17 @@ logger = logging.getLogger("TV_Manager")
 
 app = FastAPI()
 
-# ==============================================================================
-# ESTADO GLOBAL (Control de Procesos)
-# ==============================================================================
-# Variable para rastrear el proceso del bot y evitar duplicados
-bot_process = None
+# Variable global para controlar el proceso del bot y evitar saturar la RAM del Celeron
+proceso_grabador = None
 
 # ==============================================================================
-# CONFIGURACIÓN DE CORS Y RUTAS
+# CONFIGURACIÓN de CORS Y RUTAS
 # ==============================================================================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
     allow_credentials=True,
-    allow_methods=["*"], 
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -50,34 +47,7 @@ jinja_env = jinja2.Environment(
 templates = Jinja2Templates(env=jinja_env)
 
 # ==============================================================================
-# HELPERS DE INTERFAZ (Para respuestas coherentes)
-# ==============================================================================
-def dark_html_response(title, message, is_error=False):
-    """Genera una página de respuesta con el estilo Dark del Panel"""
-    color = "#cf6679" if is_error else "#03dac6"
-    return HTMLResponse(content=f"""
-        <html>
-            <head>
-                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-                <style>
-                    body {{ background-color: #121212; color: white; font-family: sans-serif; text-align: center; padding-top: 100px; }}
-                    .card {{ background-color: #1e1e1e; color: white; border: 1px solid #333; display: inline-block; padding: 40px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }}
-                    h2 {{ color: {color}; }}
-                    .btn-back {{ background-color: #6200ee; color: white; border: none; padding: 10px 20px; border-radius: 5px; text-decoration: none; font-weight: bold; }}
-                </style>
-            </head>
-            <body>
-                <div class="card">
-                    <h2>{title}</h2>
-                    <p class="mb-4">{message}</p>
-                    <a href="/" class="btn-back">⬅️ Volver al Panel</a>
-                </div>
-            </body>
-        </html>
-    """)
-
-# ==============================================================================
-# GESTIÓN DE BASE DE DATOS
+# GESTIÓN DE BASE DE DATOS (Modo WAL)
 # ==============================================================================
 def get_db_connection():
     try:
@@ -90,13 +60,23 @@ def get_db_connection():
         return None
 
 # ==============================================================================
-# API PARA LA EXTENSIÓN
+# API PARA LA EXTENSIÓN Y EL PANEL
 # ==============================================================================
 
 @app.get("/api/ping")
 async def ping():
-    logger.info("📡 Handshake recibido desde la extensión.")
     return {"status": "ok", "message": "Servidor de TV conectado correctamente."}
+
+@app.get("/api/sites")
+async def get_sites():
+    """Devuelve la lista de dominios que tienen una receta cargada para el menú desplegable"""
+    try:
+        archivos = os.listdir(CONFIGS_DIR)
+        dominios = [f.replace("_receta.json", "") for f in archivos if f.endswith("_receta.json")]
+        return {"sites": dominios}
+    except Exception as e:
+        logger.error(f"Error leyendo recetas: {e}")
+        return {"sites": [], "error": str(e)}
 
 @app.post("/api/upload_recipe")
 async def upload_recipe(request: Request):
@@ -122,15 +102,14 @@ async def get_last_link():
     if conn:
         try:
             row = conn.execute("SELECT url_final FROM contenidos WHERE url_final IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
-            if row:
-                return {"url": row['url_final']}
+            if row: return {"url": row['url_final']}
             return {"url": "No se han capturado videos aún."}
         finally:
             conn.close()
     return {"url": "Error de conexión a la base de datos."}
 
 # ==============================================================================
-# PANEL DE CONTROL (HTML)
+# RUTAS DEL PANEL DE CONTROL (HTML)
 # ==============================================================================
 
 @app.get("/", response_class=HTMLResponse)
@@ -169,40 +148,59 @@ async def add_site(dominio: str = Form(...), nombre: str = Form(...)):
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/add_content")
-async def add_content(request: Request, hora_programada: str = Form(None)):
-    """Lanza el reproductor.js con control de procesos para evitar saturar la RAM"""
-    global bot_process
+async def add_content(
+    request: Request, 
+    dominio: str = Form(...), 
+    keyword: str = Form(...), 
+    clasificacion: str = Form("SERIE"), 
+    episodio: int = Form(1), 
+    hora_programada: str = Form(None)
+):
+    """
+    Recibe los datos del formulario y los pasa como argumentos al bot de Node.js
+    """
+    global proceso_grabador
 
-    # 1. Verificar si el bot ya se está ejecutando
-    if bot_process is not None:
-        # poll() devuelve None si el proceso sigue vivo
-        if bot_process.poll() is None:
-            logger.warning("⚠️ Intento de lanzar el bot mientras ya hay uno activo.")
-            return dark_html_response(
-                "⚠️ Bot Ocupado", 
-                "Ya hay un proceso de captura ejecutándose en segundo plano. Por favor, espera a que termine para lanzar otro.", 
-                is_error=True
-            )
+    # 1. PROTECCIÓN DE RAM: Verificar si el bot ya está corriendo
+    if proceso_grabador is not None:
+        proceso_grabador.poll() # Actualiza el estado del proceso
+        if proceso_grabador.returncode is None:
+            return HTMLResponse(content="""
+                <html><body style="font-family:sans-serif; text-align:center; padding-top:50px; background-color:#121212; color:white;">
+                <h2 style="color:#cf6679;">⚠️ Bot Ocupado</h2>
+                <p>Ya hay una captura en curso. Por favor espera a que termine.</p>
+                <a href="/" style="color:#03dac6;">Volver al Panel</a>
+                </body></html>
+            """, status_code=429)
 
-    # 2. Configuración del entorno
-    env = os.environ.copy()
-
-    comando_node = ["node", "reproductor.js"]
+    # 2. CONSTRUCCIÓN DEL COMANDO PARA el BOT
+    # Usamos los flags que el nuevo reproductor.js espera
+    comando_node = [
+        "node", "reproductor.js",
+        f"--dominio={dominio}",
+        f"--keyword={keyword}",
+        f"--clas={clasificacion}",
+        f"--ep={episodio}"
+    ]
+    
     if hora_programada:
         comando_node.append(f"--hora={hora_programada}")
 
     try:
-        # 3. Lanzar el proceso y guardar la referencia
-        bot_process = subprocess.Popen(comando_node, env=env)
-        logger.info(f"🤖 Bot de captura lanzado exitosamente. PID: {bot_process.pid}. Horario: {hora_programada or 'Cola General'}")
+        # Lanzamos el proceso en segundo plano
+        proceso_grabador = subprocess.Popen(comando_node)
+        logger.info(f"🤖 Bot lanzado: {keyword} en {dominio} (Ep: {episodio})")
 
-        return dark_html_response(
-            "🚀 Bot Iniciado", 
-            "El proceso de captura ha sido lanzado en segundo plano. El servidor ahora está navegando y capturando el stream."
-        )
+        return HTMLResponse(content="""
+            <html><body style="font-family:sans-serif; text-align:center; padding-top:50px; background-color:#121212; color:white;">
+            <h2 style="color:#03dac6;">🚀 Bot Iniciado</h2>
+            <p>El bot está buscando y capturando el contenido en segundo plano.</p>
+            <a href="/" style="color:#6200ee; text-decoration:none; font-weight:bold;">Volver al Panel</a>
+            </body></html>
+        """)
     except Exception as e:
         logger.error(f"Error al lanzar el bot: {e}")
-        return dark_html_response("❌ Error Interno", f"No se pudo iniciar el proceso: {e}", is_error=True)
+        return HTMLResponse(content=f"Error interno: {e}", status_code=500)
 
 @app.get("/delete/{video_id}")
 async def delete_video(video_id: int):

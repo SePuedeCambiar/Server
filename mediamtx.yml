@@ -1,0 +1,54 @@
+###############################################
+# Global settings -> General
+###############################################
+logLevel: info
+logDestinations: [stdout]
+readTimeout: 10s
+writeTimeout: 10s
+writeQueueSize: 512
+udpMaxPayloadSize: 1452
+
+###############################################
+# Global settings -> RTSP server
+###############################################
+rtsp: true
+rtspTransports: [tcp, udp]           # ← Solo TCP para evitar error 461
+rtspAddress: :8554
+
+###############################################
+# Global settings -> HLS server  ← CLAVE
+###############################################
+hls: true
+hlsAddress: :8888
+hlsEncryption: false
+hlsAllowOrigins: ['*']
+
+# ✅ Generar HLS siempre que haya stream publicado
+hlsAlwaysRemux: true
+
+# ✅ Usar mpegts para máxima compatibilidad (no lowLatency)
+hlsVariant: mpegts
+
+# ✅ Segmentos cortos para disponibilidad rápida
+hlsSegmentDuration: 5s
+hlsSegmentCount: 10
+
+# ✅ Mantener muxer activo 2 minutos después de que termine el stream
+hlsMuxerCloseAfter: 120s
+
+# ✅ Usar RAM para velocidad
+hlsDirectory: ''
+
+###############################################
+# Path settings  ← CORREGIDO: all_others en lugar de all
+###############################################
+paths:
+  # Catch-all para cualquier path no especificado
+  all_others:
+    source: publisher
+
+  # Path específico para tu TV
+  novela:
+    source: publisher
+    alwaysAvailable: true
+    alwaysAvailableFile: /opt/mediamtx/standby.mp4

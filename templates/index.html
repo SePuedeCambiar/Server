@@ -3,69 +3,129 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TV Orchestrator Panel</title>
+    <title>TV Orchestrator | Panel de Control</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <style>
-        body { background-color: #121212; color: white; }
-        .card { background-color: #1e1e1e; color: white; border: 1px solid #333; }
-        .btn-primary { background-color: #6200ee; border: none; }
-        .btn-primary:hover { background-color: #3700b3; }
-        .table-dark { background-color: #1a1a1a; }
+        :root {
+            --bg-color: #0f0f0f;
+            --card-bg: #1a1a1a;
+            --accent-color: #6200ee;
+            --accent-hover: #3700b3;
+            --text-main: #e0e0e0;
+            --border-color: #333;
+        }
+        body { 
+            background-color: var(--bg-color); 
+            color: var(--text-main); 
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        .card { 
+            background-color: var(--card-bg); 
+            color: white; 
+            border: 1px solid var(--border-color); 
+            border-radius: 12px;
+        }
+        .btn-primary { 
+            background-color: var(--accent-color); 
+            border: none; 
+            transition: 0.3s;
+        }
+        .btn-primary:hover { 
+            background-color: var(--accent-hover); 
+        }
+        .form-control, .form-select {
+            background-color: #252525 !important;
+            border: 1px solid var(--border-color) !important;
+            color: white !important;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: var(--accent-color) !important;
+            box-shadow: 0 0 0 0.25rem rgba(98, 0, 238, 0.25) !important;
+        }
+        .table-dark { 
+            background-color: #121212; 
+            border-color: var(--border-color);
+        }
         .badge-scheduled { background-color: #ffc107; color: black; }
         .badge-queue { background-color: #6c757d; color: white; }
+        .header-title {
+            font-weight: 800;
+            letter-spacing: -1px;
+            color: white;
+            text-shadow: 0 0 10px rgba(98, 0, 238, 0.5);
+        }
     </style>
 </head>
 <body class="container py-5">
-    <h1 class="text-center mb-5">📺 TV System Control Panel</h1>
+    <h1 class="text-center mb-5 header-title">📺 TV SYSTEM ORCHESTRATOR</h1>
 
     <div class="row g-4">
-        <!-- Columna de Acciones -->
+        <!-- COLUMNA IZQUIERDA: CONTROL DE CAPTURA -->
         <div class="col-md-4">
-            <div class="card p-4 shadow">
-                <h3>🛠️ Acciones</h3>
-                <hr>
+            <div class="card p-4 shadow-lg">
+                <h3 class="mb-4">🛠️ Añadir Contenido</h3>
+                
+                <form action="/add_content" method="post">
+                    <!-- 1. SELECCIÓN DE SITIO (Cargado dinámicamente) -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">🌐 Sitio (Receta)</label>
+                        <select name="dominio" id="siteSelect" class="form-select" required>
+                            <option value="" selected disabled>Cargando sitios...</option>
+                        </select>
+                        <div class="form-text">Selecciona el sitio donde buscar el anime.</div>
+                    </div>
 
-                <!-- SECCIÓN DE PROGRAMACIÓN Y LANZAMIENTO -->
-                <div class="mb-4">
-                    <label class="form-label fw-bold">📅 Programación de Contenido</label>
-                    <form action="/add_content" method="post">
-                        <div class="input-group mb-2">
-                            <span class="input-group-text bg-dark text-white border-secondary">⏰</span>
-                            <input type="time" name="hora_programada" class="form-control bg-dark text-white border-secondary">
+                    <!-- 2. BÚSQUEDA -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">🔍 Nombre del Contenido</label>
+                        <input type="text" name="keyword" class="form-control" placeholder="Ej: Bleach Sennen Kessen-hen" required>
+                    </div>
+
+                    <!-- 3. TIPO Y EPISODIO -->
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label class="form-label fw-bold">📁 Tipo</label>
+                            <select name="clasificacion" class="form-select">
+                                <option value="SERIE" selected>Serie</option>
+                                <option value="PELICULA_OVA">Película/OVA</option>
+                            </select>
                         </div>
-                        <button type="submit" class="btn btn-primary w-100 py-2 fw-bold">➕ Lanzar Grabador</button>
-                    </form>
-                    <small class="text-muted d-block mt-2">
-                        * Si dejas la hora vacía, el video entrará en la <b>Cola General</b>.
-                    </small>
+                        <div class="col-6 mb-3">
+                            <label class="form-label fw-bold">🔢 Ep/Cap</label>
+                            <input type="number" name="episodio" value="1" min="1" class="form-control">
+                        </div>
+                    </div>
+
+                    <!-- 4. HORARIO -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">⏰ Hora de Emisión (Opcional)</label>
+                        <input type="time" name="hora_programada" class="form-control">
+                        <div class="form-text">Vacío = Entra a Cola General inmediatamente.</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100 py-2 fw-bold">🚀 Capturar y Programar</button>
+                </form>
+
+                <hr class="my-4" style="border-color: #444;">
+                
+                <div class="d-grid gap-2">
+                    <a href="/ver_listas" class="btn btn-outline-light">📋 Ver Playlist Completa</a>
+                    <button onclick="location.reload()" class="btn btn-sm btn-link text-muted">🔄 Refrescar Estado</button>
                 </div>
-
-                <hr>
-
-                <!-- Formulario Añadir Sitio -->
-                <div class="mt-4">
-                    <label class="form-label fw-bold">🌐 Registrar Nuevo Sitio</label>
-                    <form action="/add_site" method="post">
-                        <input type="text" name="nombre" class="form-control mb-2 bg-dark text-white border-secondary" placeholder="Ej: JKanime" required>
-                        <input type="text" name="dominio" class="form-control mb-3 bg-dark text-white border-secondary" placeholder="jkanime.net" required>
-                        <button type="submit" class="btn btn-outline-light w-100">Registrar Sitio</button>
-                    </form>
-                </div>
-
-                <a href="/ver_listas" class="btn btn-secondary w-100 mt-4">📋 Ver Lista Completa</a>
             </div>
         </div>
 
-        <!-- Columna de Estado -->
+        <!-- COLUMNA DERECHA: ESTADO ACTUAL -->
         <div class="col-md-8">
-            <div class="card p-4 shadow">
+            <div class="card p-4 shadow-lg">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h3>🚀 Últimos Contenidos</h3>
-                    <span class="badge bg-info text-dark">Live Sync</span>
+                    <h3 class="m-0">🚀 Últimos Agregados</h3>
+                    <span class="badge bg-info text-dark">Sincronizado</span>
                 </div>
-                <hr>
+                <hr style="border-color: #444;">
+                
                 <div class="table-responsive">
-                    <table class="table table-dark table-hover">
+                    <table class="table table-dark table-hover align-middle">
                         <thead>
                             <tr>
                                 <th>ID</th>
@@ -78,8 +138,8 @@
                         <tbody>
                             {% for item in playlist %}
                             <tr>
-                                <td>{{ item.id }}</td>
-                                <td>{{ item.titulo }}</td>
+                                <td><small class="text-muted">{{ item.id }}</small></td>
+                                <td class="fw-bold">{{ item.titulo }}</td>
                                 <td>{{ item.episodio }}</td>
                                 <td>
                                     {% if item.hora_programada %}
@@ -88,14 +148,49 @@
                                         <span class="badge badge-queue">📦 Cola</span>
                                     {% endif %}
                                 </td>
-                                <td><small>{{ item.dominio }}</small></td>
+                                <td><small class="text-muted">{{ item.dominio }}</small></td>
                             </tr>
                             {% endfor %}
+                            {% if not playlist %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-4">No hay contenidos en la lista.</td>
+                            </tr>
+                            {% endif %}
                         </tbody>
                     </table>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- SCRIPTS -->
+    <script>
+        // Esta función llena el selector de sitios llamando a la API de manager.py
+        async function loadSites() {
+            try {
+                const response = await fetch('/api/sites');
+                const data = await response.json();
+                const select = document.getElementById('siteSelect');
+                
+                if (data.sites && data.sites.length > 0) {
+                    select.innerHTML = '<option value="" selected disabled>Selecciona un sitio...</option>';
+                    data.sites.forEach(site => {
+                        const option = document.createElement('option');
+                        option.value = site;
+                        option.innerText = site;
+                        select.appendChild(option);
+                    });
+                } else {
+                    select.innerHTML = '<option value="">No hay recetas disponibles</option>';
+                }
+            } catch (error) {
+                console.error("Error cargando sitios:", error);
+                document.getElementById('siteSelect').innerHTML = '<option value="">Error al cargar sitios</option>';
+            }
+        }
+
+        // Ejecutar al cargar la página
+        window.onload = loadSites;
+    </script>
 </body>
 </html>
