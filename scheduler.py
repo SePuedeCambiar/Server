@@ -6,13 +6,13 @@ from datetime import datetime, timedelta
 # --- CONFIGURACIÓN ---
 DB_NAME = 'playlist.db'
 # Definimos que una URL expira después de 4 horas (ajustable)
-HORAS_EXPIRACION = 4 
+HORAS_EXPIRACION = 4
 
 def obtener_duracion_manual(url):
     print(f"🔍 Analizando M3U8: {url[:60]}...")
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'https://jkanime.net/' 
+        'Referer': 'https://jkanime.net/'
     }
     try:
         req = urllib.request.Request(url, headers=headers)
@@ -80,7 +80,7 @@ def actualizar_datos_y_limpiar():
     # --- PARTE B: Análisis de Expiración ---
     # Calculamos el punto de corte (Hora actual menos X horas)
     punto_corte = (datetime.now() - timedelta(hours=HORAS_EXPIRACION)).strftime('%Y-%m-%d %H:%M:%S')
-    
+
     cursor.execute("SELECT id, titulo FROM contenidos WHERE fecha_captura < ?", (punto_corte,))
     expirados = cursor.fetchall()
 

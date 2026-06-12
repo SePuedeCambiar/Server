@@ -1,0 +1,17 @@
+# Entornos virtuales
+venv/
+venv312/
+.python-version
+
+# Dependencias de Node
+node_modules/
+package-lock.json
+
+# Base de datos y logs
+*.db
+*.log
+urls_fallidas.txt
+
+# Archivos temporales y descargas
+almacen_tv/
+lista.txt

@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  mediamtx:
+    image: bluenviron/mediamtx
+    container_name: mediamtx
+    ports:
+      - "1935:1935" # RTMP
+      - "8888:8888" # HLS
+      - "8554:8554" # RTSP
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml
+      # CORRECCIÓN: El archivo standby debe estar donde corre MediaMTX
+      - ./assets/standby_compatible.mp4:/opt/mediamtx/standby.mp4
+    restart: unless-stopped
+
+  tv-orchestrator:
+    build: .
+    container_name: tv-orchestrator
+    ports:
+      - "9001:9001"
+    volumes:
+      - ./playlist.db:/app/playlist.db
+      - ./configs:/app/configs
+      - ./assets:/app/assets
+      - /dev/shm:/dev/shm     # RAM Disk para FFmpeg
+    depends_on:
+      - mediamtx
+    restart: unless-stopped
