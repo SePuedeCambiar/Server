@@ -15,6 +15,9 @@ const STATE_FILE = path.join(__dirname, 'configs', 'bot_state.json');
 // En Docker, esto DEBE ser false para que la librería use Xvfb y pase Cloudflare
 const MODO_INVISIBLE = false;
 
+global.videoCapturado = null;
+global.currentMainPage = null;
+
 /**
  * Escribe el estado actual del bot en el archivo JSON para que el Panel Web lo lea
  */
@@ -75,6 +78,31 @@ function cargarRecetaPorDominio(dominioBuscado) {
         if (receta.dominio === dominioBuscado) return receta;
     }
     return null;
+}
+
+// ============================================================================
+// SISTEMA DE CONTROL DE PESTAÑAS (TAB PINNING - ANTI POPUPS)
+// ============================================================================
+function blindarNavegador(browser, mainPage) {
+    global.currentMainPage = mainPage;
+
+    mainPage.evaluateOnNewDocument(() => {
+        window.open = () => {
+            console.log("🚫 [Blindaje] Intento de ventana emergente bloqueado.");
+            return null;
+        };
+    });
+
+    browser.on('targetcreated', async (target) => {
+        if (target.type() === 'page') {
+            const page = await target.page();
+            if (page && page !== global.currentMainPage) {
+                const url = page.url();
+                console.log(`🚫 [Blindaje] Cerrando pestaña intrusa: ${url.substring(0, 45)}...`);
+                await page.close().catch(() => {});
+            }
+        }
+    });
 }
 
 /**
@@ -161,58 +189,69 @@ function generarUrlEpisodio(showUrl, capitulo, receta) {
     return `${urlLimpia}/${capitulo}/`;
 }
 
-/**
- * FUNCIÓN NINJA: Captura el stream rompiendo capas de anuncios y forzando el Play
- */
+// ============================================================================
+// FUNCIÓN NINJA: CAPTURA DE STREAM ADAPTATIVA (DEL BENCHMARK)
+// ============================================================================
 async function activarVideoSandbox(page) {
     console.log("\n🎬 Buscando reproductor y forzando ejecución ninja...");
+    const playSelectors = ['.vjs-big-play-button', '.play-button', '.btn-play', '[class*="play"]', 'video', '.video-play', '.jw-icon-display', '.plyr__control--overlaid'];
     const startTime = Date.now();
-    
-    while (Date.now() - startTime < 45000) { 
+    let currentWait = 2000;
+      
+    while (Date.now() - startTime < 60000) { 
         if (global.videoCapturado) return true;
         
-        const frames = page.frames();
-        for (const frame of frames) {
-            try {
-                // Truco 1: Robar el src directo si ya existe
-                const src = await frame.evaluate(() => {
-                    const vid = document.querySelector('video');
-                    return vid ? vid.src : null;
-                });
-                if (src && (src.includes('.m3u8') || src.includes('.mp4')) && !src.startsWith('blob:')) {
-                    global.videoCapturado = src;
-                    return true;
-                }
-
-                // Truco 2: Mute + Play forzado (Evita el bloqueo de Autoplay de Chrome)
-                await frame.evaluate(() => {
-                    const videos = document.querySelectorAll('video');
-                    videos.forEach(v => {
-                        v.muted = true; 
-                        v.play().catch(() => {});
-                    });
-                    
-                    const playSelectors = ['.vjs-big-play-button', '.play-button', '.btn-play', '[class*="play"]', '.jw-icon-display', '.plyr__control--overlaid'];
-                    playSelectors.forEach(sel => {
-                        const btn = document.querySelector(sel);
-                        if (btn) btn.click();
-                    });
-                });
-            } catch (e) {}
-        }
-        
-        // Truco 3: Click físico en el centro de la pantalla para romper overlays
         try {
-            const { width, height } = await page.evaluate(() => ({ 
-                width: window.innerWidth, 
-                height: window.innerHeight 
-            }));
-            await page.mouse.click(width / 2, height / 2);
-        } catch(e) {}
+            // Clic programático para romper overlays transparentes
+            await page.evaluate(() => {
+                const x = window.innerWidth / 2;
+                const y = window.innerHeight / 2;
+                document.elementFromPoint(x, y)?.click();
+            });
 
-        await new Promise(r => setTimeout(r, 2000));
+            const estadoBuffer = await page.evaluate(() => {
+                const v = document.querySelector('video');
+                return v ? { ready: v.readyState >= 1, playing: !v.paused } : { ready: false, playing: false };
+            });
+
+            const frames = page.frames();
+            for (const frame of frames) {
+                try {
+                    if (frame.url().includes('about:blank')) continue;
+                    
+                    // Extraer src de manera directa si ya existe
+                    const src = await frame.evaluate(() => {
+                        const vid = document.querySelector('video');
+                        return vid ? vid.src : null;
+                    });
+                    if (src && (src.includes('.m3u8') || src.includes('.mp4')) && !src.startsWith('blob:')) {
+                        global.videoCapturado = src;
+                        return true;
+                    }
+
+                    // Forzar click en play selectors dentro del iframe
+                    for (const selector of playSelectors) {
+                        const el = await frame.$(selector);
+                        if (el) {
+                            await frame.evaluate((sel) => {
+                                document.querySelector(sel)?.click();
+                            }, selector);
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            if (estadoBuffer.ready) {
+                console.log("⚡ ¡Buffer del reproductor detectado! Sincronizando...");
+                await new Promise(r => setTimeout(r, 1500));
+            } else {
+                console.log(`⏳ Buffer vacío. Reintentando en ${currentWait / 1000}s...`);
+                await new Promise(r => setTimeout(r, currentWait));
+                currentWait = Math.min(currentWait + 1500, 8000); // Backoff progresivo
+            }
+        } catch(e) {}
     }
-    return false;
+    return !!global.videoCapturado;
 }
 
 // ============================================================================
@@ -249,9 +288,11 @@ async function main() {
         connectOption: { defaultViewport: null }
     });
 
+    // Activar Blindaje de Navegador para neutralizar Popups agresivos de Cuevana
+    blindarNavegador(browser, page);
+
     // CONFIGURACIÓN CRÍTICA PARA DOCKER Y SITIOS LENTOS
     page.setDefaultNavigationTimeout(90000); 
-    await page.evaluateOnNewDocument(() => { window.open = () => null; });
 
     // INTERCEPCIÓN INTELIGENTE DE RED (Ahorra un ~90% de ancho de banda y renderizado)
     await page.setRequestInterception(true);
@@ -306,26 +347,39 @@ async function main() {
         const receta = cargarRecetaPorDominio(ARG_DOMINIO);
         if (!receta) throw new Error(`No se encontró receta para ${ARG_DOMINIO}`);
 
-        // --- PASO 1: BÚSQUEDA ---
-        const initSelector = receta.searchSelector || 'input[type="search"], input[name="q"], #search';
-        await navegarYAbortar(page, `https://${receta.dominio}`, initSelector, false);
+        // --- PASO 1: BÚSQUEDA (DIRECTA SI APLICA) ---
+        let searchUrl = null;
+        if (ARG_DOMINIO.includes('jkanime')) {
+            searchUrl = `https://${ARG_DOMINIO}/buscar/${encodeURIComponent(ARG_KEYWORD)}`;
+        } else if (ARG_DOMINIO.includes('cuevana')) {
+            searchUrl = `https://${ARG_DOMINIO}/explorar?s=${encodeURIComponent(ARG_KEYWORD)}`;
+        }
+
+        if (searchUrl) {
+            console.log(`📡 Navegando directamente a la búsqueda: ${searchUrl}`);
+            await navegarYAbortar(page, searchUrl, 'a', false);
+        } else {
+            // Fallback genérico para otros sitios si no hay URL parametrizada
+            const initSelector = receta.searchSelector || 'input[type="search"], input[name="q"], #search';
+            await navegarYAbortar(page, `https://${receta.dominio}`, initSelector, false);
+            await esperarBypass(page);
+
+            const sSelector = receta.searchSelector || 'input[type="search"], input[name="q"], #search';
+            await page.waitForSelector(sSelector, { timeout: 15000 });
+            await page.$eval(sSelector, (el, val) => {
+                el.value = val; el.dispatchEvent(new Event('input', { bubbles: true }));
+            }, ARG_KEYWORD);
+
+            const subSelector = receta.submitSelector || 'button[type="submit"], input[type="submit"], .search-submit';
+            try {
+                await page.click(subSelector);
+            } catch (e) {
+                await page.$eval(sSelector, (el) => el.closest('form')?.submit());
+            }
+        }
         await esperarBypass(page);
 
-        const sSelector = receta.searchSelector || 'input[type="search"], input[name="q"], #search';
-        await page.waitForSelector(sSelector, { timeout: 15000 });
-        await page.$eval(sSelector, (el, val) => {
-            el.value = val; el.dispatchEvent(new Event('input', { bubbles: true }));
-        }, ARG_KEYWORD);
-
-        const subSelector = receta.submitSelector || 'button[type="submit"], input[type="submit"], .search-submit';
-        try { 
-            await page.click(subSelector); 
-        } catch (e) { 
-            await page.$eval(sSelector, (el) => el.closest('form')?.submit()); 
-        }  
-        await esperarBypass(page);
-
-        // Extraer resultados
+        // Extraer resultados de la búsqueda
         const enlaces = await page.evaluate((kw) => {
             return Array.from(document.querySelectorAll('a')).map(a => ({ href: a.href, text: a.innerText.trim() }))
                 .filter(e => e.text.toLowerCase().includes(kw.toLowerCase()) && e.href.length > 10);
@@ -338,12 +392,11 @@ async function main() {
         const show = enlaces[seleccionIdx] || enlaces[0];
         const urlBaseFinal = show.href;
 
-        // --- PASO 2: FICHA DEL SHOW ---
-        // La ficha de la serie SÍ es crítica porque contiene la lista de episodios renderizada por JS
+        // --- PASO 2: FICHA DEL SHOW (PÁGINA CRÍTICA) ---
         await navegarYAbortar(page, urlBaseFinal, 'body', true);
         await esperarBypass(page);
 
-        // Interacción Panel: Seleccionar Tipo
+        // Interacción Panel: Seleccionar Tipo (Serie o Película)
         const tipo = await esperarRespuesta('SELECT_TYPE', "¿Serie o Película?", { titulo: show.text });
         const clasificacionFinal = (tipo === 'P') ? 'PELICULA_OVA' : 'SERIE';
 
@@ -362,14 +415,13 @@ async function main() {
             targetUrl = generarUrlEpisodio(urlBaseFinal, capituloElegido, receta);
         }
 
-        // --- PASO 3: CAPTURA FINAL ---
+        // --- PASO 3: CAPTURA FINAL (PÁGINA CRÍTICA) ---
         console.log(`➡️ Navegando al video final: ${targetUrl}`);
         const selectorVideo = '.video-play, #play-button, video, .vjs-big-play-button';
-        // El episodio SÍ es página crítica porque necesita montar el reproductor de video
         await navegarYAbortar(page, targetUrl, selectorVideo, true);
         await esperarBypass(page);
 
-        // Intentar click inicial en botones visibles
+        // Intentar click inicial en botones visibles para disparar reproductores embebidos
         const diag = await page.evaluate(() => ({
             hasPlay: document.querySelector('.video-play') !== null,
             servers: Array.from(document.querySelectorAll('li[role="presentation"], .server-item')).map(el => el.innerText.trim())
@@ -383,7 +435,7 @@ async function main() {
             await new Promise(r => setTimeout(r, 4000));
         }
 
-        // Ejecutar el Sandbox agresivo
+        // Ejecutar el Sandbox agresivo adaptativo
         await activarVideoSandbox(page);
 
         if (global.videoCapturado) {
