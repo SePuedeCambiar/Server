@@ -7,7 +7,7 @@ from threading import Thread, Event
 from datetime import datetime
 
 # ==============================================================================
-# CONFIGURACIÓN GLOBAL (Sincronizada con tu script de Bash)
+# CONFIGURACIÓN GLOBAL
 # ==============================================================================
 class Config:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -15,19 +15,42 @@ class Config:
     LOG_FILE = os.path.join(BASE_DIR, "tv_system.log")
     FFMPEG_LOG = os.path.join(BASE_DIR, "ffmpeg_errors.log")
     COOKIES_FILE = os.path.join(BASE_DIR, "cookies.txt")
-    ALMACEN = "/dev/shm/almacen_tv"  # Disco en RAM
+    ALMACEN = "/dev/shm/almacen_tv"  # Disco en RAM para evitar desgaste de SSD/SD
 
     # Streaming
     RTMP_URL = "rtmp://mediamtx:1935/novela"
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-    # Optimización FFmpeg (Rescatado de tu script de Bash)
+    # --------------------------------------------------------------------------
+    # AJUSTES DE RENDIMIENTO (EL CORAZÓN DE LA OPTIMIZACIÓN)
+    # --------------------------------------------------------------------------
+    # 'copy'     -> NO renderiza. Solo mueve datos. CPU < 5%. Ideal para Celeron.
+    # 'transcode'-> Renderiza todo a 720p. CPU Alta. Solo usar si el video original es gigante.
+    MODO_EMISION = 'copy' 
+
+    # Parámetros para modo 'transcode' (Renderizado tradicional)
     VIDEO_SCALE = "scale=1280:720,fps=25,format=yuv420p"
-    FFMPEG_PARAMS = [
+    FFMPEG_TRANSCODE_PARAMS = [
         "-c:v", "libx264",
-        "-preset", "ultrafast",        # <--- CAMBIADO: Máxima velocidad para Celeron
-        "-tune", "zerolatency",        # <--- NUEVO: Elimina delay de buffer
+        "-preset", "ultrafast",
+        "-tune", "zerolatency",
         "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k", "-f", "flv"
+    ]
+
+    # Parámetros para modo 'copy' - ARCHIVOS LOCALES (MP4 descargados por yt-dlp)
+    # Como ya son H264+AAC, hacemos una copia pura. 0% de CPU.
+    FFMPEG_COPY_PURE = [
+        "-c:v", "copy",
+        "-c:a", "copy",
+        "-f", "flv"
+    ]
+
+    # Parámetros para modo 'copy' - STREAMS REMOTOS (HLS/m3u8)
+    # Copiamos el video (0% CPU) pero aseguramos que el audio sea AAC para evitar errores en RTMP.
+    FFMPEG_COPY_SMART = [
+        "-c:v", "copy",
+        "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k",
+        "-f", "flv"
     ]
 
     @classmethod
@@ -110,7 +133,7 @@ class Downloader:
             return False
 
 # ==============================================================================
-# MÓDULO DE TRANSMISIÓN (Sincronizado con el Bash original)
+# MÓDULO DE TRANSMISIÓN (OPTIMIZADO PARA CELERON)
 # ==============================================================================
 class Streamer:
     def __init__(self):
@@ -121,32 +144,56 @@ class Streamer:
         url_file = f"{Config.ALMACEN}/next_{video_id}.mp4"
         url_meta = f"{Config.ALMACEN}/next_{video_id}.url"
 
+        # --- CASO 1: STREAM REMOTO (HLS/m3u8) ---
         if os.path.exists(url_meta):
             with open(url_meta, "r") as f:
                 lines = f.read().splitlines()
                 stream_url, referer = lines[0], lines[1]
 
             logger.info(f"🎬 TRANSMITIENDO HLS VIVO: {stream_url}")
-            # Configuración agresiva de red rescatada del Bash
-            comando = [
-                "ffmpeg", "-y", "-re",
-                "-thread_queue_size", "2048",
-                "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
-                "-fflags", "+genpts+discardcorrupt",
-                "-referer", referer, "-user_agent", Config.USER_AGENT,
-                "-i", stream_url, "-vf", Config.VIDEO_SCALE,
-                *Config.FFMPEG_PARAMS, self.rtmp_url
-            ]
+            
+            if Config.MODO_EMISION == 'copy':
+                # Copia video (0% CPU), transcodifica solo audio (AAC) para compatibilidad RTMP
+                comando = [
+                    "ffmpeg", "-y", "-re",
+                    "-thread_queue_size", "2048",
+                    "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
+                    "-fflags", "+genpts+discardcorrupt",
+                    "-referer", referer, "-user_agent", Config.USER_AGENT,
+                    "-i", stream_url,
+                    *Config.FFMPEG_COPY_SMART, self.rtmp_url
+                ]
+            else:
+                # Renderizado completo (CPU ALTA)
+                comando = [
+                    "ffmpeg", "-y", "-re",
+                    "-thread_queue_size", "2048",
+                    "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
+                    "-fflags", "+genpts+discardcorrupt",
+                    "-referer", referer, "-user_agent", Config.USER_AGENT,
+                    "-i", stream_url, "-vf", Config.VIDEO_SCALE,
+                    *Config.FFMPEG_TRANSCODE_PARAMS, self.rtmp_url
+                ]
             return self._ejecutar_ffmpeg(comando, url_meta)
 
+        # --- CASO 2: ARCHIVO LOCAL (MP4 en RAM) ---
         elif os.path.exists(url_file):
             logger.info(f"🎬 TRANSMITIENDO ARCHIVO RAM: {url_file}")
-            # TRUCO DEL BASH: readrate 1.3 para llenar el caché de MediaMTX rápido
-            comando = [
-                "ffmpeg", "-y", "-readrate", "1.3", 
-                "-i", url_file, "-vf", Config.VIDEO_SCALE,
-                *Config.FFMPEG_PARAMS, self.rtmp_url
-            ]
+            
+            if Config.MODO_EMISION == 'copy':
+                # Copia pura: No toca ni un solo píxel. 0% CPU.
+                comando = [
+                    "ffmpeg", "-y", "-readrate", "1.3", 
+                    "-i", url_file,
+                    *Config.FFMPEG_COPY_PURE, self.rtmp_url
+                ]
+            else:
+                # Renderizado completo (CPU ALTA)
+                comando = [
+                    "ffmpeg", "-y", "-readrate", "1.3", 
+                    "-i", url_file, "-vf", Config.VIDEO_SCALE,
+                    *Config.FFMPEG_TRANSCODE_PARAMS, self.rtmp_url
+                ]
             return self._ejecutar_ffmpeg(comando, url_file)
 
         logger.error("❌ No se encontró recurso listo para emitir.")
@@ -155,7 +202,6 @@ class Streamer:
     def _ejecutar_ffmpeg(self, comando, path_to_clean):
         try:
             with open(Config.FFMPEG_LOG, "a") as log:
-                # Usamos stderr=log para capturar exactamente qué falla
                 subprocess.run(comando, stdout=subprocess.DEVNULL, stderr=log, check=True)
             if os.path.exists(path_to_clean):
                 os.remove(path_to_clean)
@@ -165,7 +211,7 @@ class Streamer:
             return False
 
 # ==============================================================================
-# EJECUTOR PRINCIPAL
+# EJECUTOR PRINCIPAL (Orquestador)
 # ==============================================================================
 class TVExecutor:
     def __init__(self):
@@ -176,6 +222,7 @@ class TVExecutor:
         self.is_downloading = False
 
     def monitor_progress(self, video_id, duration):
+        # Espera al 80% de la duración del video actual para empezar a bajar el siguiente
         time.sleep(duration * 0.8)
         if not self.is_downloading:
             self.disparar_siguiente()
@@ -192,26 +239,26 @@ class TVExecutor:
         self.is_downloading = False
 
     def ejecutar(self):
-        logger.info("🚀 Iniciando TV Autónoma Ultra-Celeron (Fast-Cache Mode)")
+        logger.info(f"🚀 Iniciando TV Autónoma en modo [{Config.MODO_EMISION.upper()}]")
         Config.preparar_entorno()
 
         while not self.stop_event.is_set():
             actual = self.db.obtener_siguiente()
             if not actual:
-                # Log cada 30s para saber que el emisor SIGUE VIVO
                 logger.info("💤 Esperando contenido en la base de datos...")
                 time.sleep(30)
                 continue
 
-            # Asegurar descarga
+            # Asegurar que el video actual esté descargado antes de emitir
             if not os.path.exists(f"{Config.ALMACEN}/next_{actual['id']}.mp4") and \
                not os.path.exists(f"{Config.ALMACEN}/next_{actual['id']}.url"):
                 self.downloader.descargar(actual)
 
-            # Prefetch dinámico basado en duración de DB o 20min
+            # Lanzar prefetch del siguiente video basándose en la duración
             duracion = actual.get('duracion', 1200) if isinstance(actual, dict) else 1200
             Thread(target=self.monitor_progress, args=(actual['id'], duracion), daemon=True).start()
 
+            # Emitir el video
             if self.streamer.emitir(actual):
                 logger.info(f"✅ Finalizado: {actual['titulo']}")
                 self.db.marcar_reproducido(actual['id'])
