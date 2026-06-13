@@ -10,7 +10,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv \
     curl ffmpeg wget ca-certificates \
-    # Librerías necesarias para que Google Chrome funcione en modo headless
+    xvfb \
     libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 libasound2 \
     build-essential \
     && rm -rf /var/lib/apt/lists/*

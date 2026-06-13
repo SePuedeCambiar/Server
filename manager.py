@@ -171,7 +171,7 @@ async def add_content(
 
     # 3. Lanzar bot con argumentos necesarios
     env = os.environ.copy()
-    env["DISPLAY"] = ":0" # Requerido para Puppeteer aunque sea headless en algunos casos
+    # env["DISPLAY"] = ":0" # Requerido para Puppeteer aunque sea headless en algunos casos
     
     comando = ["node", "reproductor.js", f"--dominio={dominio}", f"--keyword={keyword}"]
     

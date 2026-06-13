@@ -13,7 +13,7 @@ db.pragma('journal_mode = WAL');
 const STATE_FILE = path.join(__dirname, 'configs', 'bot_state.json');
 
 // Auto-detección de modo: Si no hay pantalla (Docker), corre invisible
-const MODO_INVISIBLE = !process.env.DISPLAY;
+const MODO_INVISIBLE = false; // Forzar a false para que use Xvfb y pase Cloudflare
 
 /**
  * Escribe el estado actual del bot en el archivo JSON para que el Panel Web lo lea
