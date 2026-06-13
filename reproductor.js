@@ -63,7 +63,7 @@ async function esperarRespuesta(estado, preguntaTexto, datosExtra = {}) {
 }
 
 // ============================================================================
-// 2. FUNCIONES DE SOPORTE Y NAVEGACIÓN
+// 2. FUNCIONES DE SOPORTE, NAVEGACIÓN Y ABORTO (ASAP)
 // ============================================================================
 
 function cargarRecetaPorDominio(dominioBuscado) {
@@ -77,13 +77,23 @@ function cargarRecetaPorDominio(dominioBuscado) {
     return null;
 }
 
+/**
+ * Bypass de Cloudflare optimizado sin tiempos muertos innecesarios
+ */
 async function esperarBypass(page, maxIntentos = 30) {
     console.log("🛡️ Verificando estado del bypass...");
-    await new Promise(r => setTimeout(r, 4000));
+    await new Promise(r => setTimeout(r, 1500)); // Bajamos de 4s a 1.5s para ahorrar tiempo muerto
     for (let i = 1; i <= maxIntentos; i++) {
         try {
-            const titulo = await page.title().catch(() => '');
             const url = page.url();
+            
+            // Si la URL está vacía por retraso de red, esperamos un segundo
+            if (url === 'about:blank' || url.trim().length < 10) {
+                await new Promise(r => setTimeout(r, 1000));
+                continue;
+            }
+
+            const titulo = await page.title().catch(() => '');
             let esDesafio = titulo.toLowerCase().includes('just a moment') ||
                             url.includes('challenges.cloudflare.com') ||
                             titulo.toLowerCase().includes('verificando que eres humano');
@@ -93,14 +103,44 @@ async function esperarBypass(page, maxIntentos = 30) {
             }
             if (esDesafio) {
                 console.log(`⏳ [${i}/${maxIntentos}] Resolviendo escudo...`);
-                await new Promise(r => setTimeout(r, 4000));
-            } else if (url !== 'about:blank' && !url.startsWith('about:') && url.trim().length > 10) {
+                await new Promise(r => setTimeout(r, 3000));
+            } else {
                 console.log("✅ Bypass completado.");
                 return true;
             }
-        } catch (e) {}
+        } catch (e) {
+            await new Promise(r => setTimeout(r, 1000));
+        }
     }
     return false;
+}
+
+/**
+ * Función asíncrona inteligente para realizar la carga ASAP y abortar red basura
+ */
+async function navegarYAbortar(page, url, selector, esPaginaCritica = false) {
+    try {
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        
+        // Fichas y Episodios necesitan que corra Javascript nativo (no las abortamos con window.stop)
+        if (esPaginaCritica) {
+            await page.waitForSelector(selector, { timeout: 12000 });
+            return;
+        }
+
+        // Búsquedas normales las abortamos inmediatamente si no hay un captcha en pantalla
+        const currentUrl = page.url();
+        const titulo = await page.title().catch(() => '');
+        const esCF = titulo.toLowerCase().includes('just a moment') || currentUrl.includes('challenges.cloudflare.com');
+        
+        if (!esCF) {
+            await page.waitForSelector(selector, { timeout: 10000 });
+            await page.evaluate(() => window.stop()).catch(() => {});
+            console.log("🛑 [ASAP] Carga de página abortada para ahorrar recursos.");
+        }
+    } catch (e) {
+        // Continuar silenciosamente ante timeouts lentos
+    }
 }
 
 async function clickInteligente(page, selector) {
@@ -194,9 +234,17 @@ async function main() {
     console.log(`🖥️ Modo Invisible: ${MODO_INVISIBLE}`);
     console.log("======================================================");
 
+    // Conexión con argumentos gráficos y de memoria ultra-optimizados para Celeron
     const { browser, page } = await connect({
         headless: MODO_INVISIBLE,
-        args: ["--start-maximized", "--no-sandbox", "--disable-setuid-sandbox"],
+        args: [
+            "--start-maximized", 
+            "--no-sandbox", 
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",         // Requerido en Docker para evitar fallas de memoria
+            "--disable-accelerated-2d-canvas", // Evita renderizado 2D pesado
+            "--disable-gpu"                    // Desactiva la GPU para liberar el Celeron
+        ],
         turnstile: true,
         connectOption: { defaultViewport: null }
     });
@@ -204,6 +252,45 @@ async function main() {
     // CONFIGURACIÓN CRÍTICA PARA DOCKER Y SITIOS LENTOS
     page.setDefaultNavigationTimeout(90000); 
     await page.evaluateOnNewDocument(() => { window.open = () => null; });
+
+    // INTERCEPCIÓN INTELIGENTE DE RED (Ahorra un ~90% de ancho de banda y renderizado)
+    await page.setRequestInterception(true);
+    let peticionesBloqueadas = 0;
+    page.on('request', (req) => {
+        const type = req.resourceType();
+        const url = req.url().toLowerCase();
+        
+        // 1. Regla de Oro: Pasar Cloudflare y Turnstile siempre
+        if (
+            url.includes('cloudflare') || 
+            url.includes('challenges') || 
+            url.includes('captcha') || 
+            url.includes('turnstile')
+        ) {
+            return req.continue();
+        }
+
+        // 2. Bloquear elementos pesados e inútiles para la extracción
+        if (['image', 'font', 'media'].includes(type)) {
+            peticionesBloqueadas++;
+            return req.abort();
+        }
+
+        // 3. Bloquear trackers y publicidad que devoran ciclos de CPU del procesador
+        const esAnuncioOTracker = [
+            '1xbet', 'popads', 'doubleclick', 'google-analytics', 'googletagmanager', 'gtag',
+            'onclickads', 'facebook', 'exoclick', 'juicyads', 
+            'a-ads', 'coinad', 'histats', 'adskeeper', 'mgid',
+            'analytics', 'telemetry', 'tracker', 'anisabi.com'
+        ].some(keyword => url.includes(keyword));
+
+        if (esAnuncioOTracker && ['script', 'xhr', 'fetch', 'other'].includes(type)) {
+            peticionesBloqueadas++;
+            return req.abort();
+        }
+
+        req.continue();
+    });
 
     page.on('response', (response) => {
         try {
@@ -220,8 +307,8 @@ async function main() {
         if (!receta) throw new Error(`No se encontró receta para ${ARG_DOMINIO}`);
 
         // --- PASO 1: BÚSQUEDA ---
-        // Usamos domcontentloaded para evitar el Timeout de networkidle2
-        await page.goto(`https://${receta.dominio}`, { waitUntil: 'domcontentloaded' });
+        const initSelector = receta.searchSelector || 'input[type="search"], input[name="q"], #search';
+        await navegarYAbortar(page, `https://${receta.dominio}`, initSelector, false);
         await esperarBypass(page);
 
         const sSelector = receta.searchSelector || 'input[type="search"], input[name="q"], #search';
@@ -252,7 +339,8 @@ async function main() {
         const urlBaseFinal = show.href;
 
         // --- PASO 2: FICHA DEL SHOW ---
-        await page.goto(urlBaseFinal, { waitUntil: 'domcontentloaded' });
+        // La ficha de la serie SÍ es crítica porque contiene la lista de episodios renderizada por JS
+        await navegarYAbortar(page, urlBaseFinal, 'body', true);
         await esperarBypass(page);
 
         // Interacción Panel: Seleccionar Tipo
@@ -276,7 +364,9 @@ async function main() {
 
         // --- PASO 3: CAPTURA FINAL ---
         console.log(`➡️ Navegando al video final: ${targetUrl}`);
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
+        const selectorVideo = '.video-play, #play-button, video, .vjs-big-play-button';
+        // El episodio SÍ es página crítica porque necesita montar el reproductor de video
+        await navegarYAbortar(page, targetUrl, selectorVideo, true);
         await esperarBypass(page);
 
         // Intentar click inicial en botones visibles
@@ -298,6 +388,7 @@ async function main() {
 
         if (global.videoCapturado) {
             console.log(`\n🎉 ¡ÉXITO! Enlace capturado: ${global.videoCapturado}`);
+            console.log(`🧹 Rendimiento: Se bloquearon ${peticionesBloqueadas} recursos basura en esta corrida.`);
             const insert = db.prepare('INSERT INTO contenidos (titulo, clasificacion, episodio, url_final, url_base, dominio, hora_programada, reproducido) VALUES (?, ?, ?, ?, ?, ?, ?, 0)');
             insert.run(ARG_KEYWORD, clasificacionFinal, capituloElegido, global.videoCapturado, urlBaseFinal, ARG_DOMINIO, ARG_HORA);
             await enviarEstado('IDLE', { message: '¡Contenido guardado con éxito!' });
