@@ -12,8 +12,8 @@ db.pragma('journal_mode = WAL');
 // Archivo puente para comunicarse con el manager.py y el index.html
 const STATE_FILE = path.join(__dirname, 'configs', 'bot_state.json');
 
-// Auto-detección de modo: Si no hay pantalla (Docker), corre invisible
-const MODO_INVISIBLE = false; // Forzar a false para que use Xvfb y pase Cloudflare
+// En Docker, esto DEBE ser false para que la librería use Xvfb y pase Cloudflare
+const MODO_INVISIBLE = false;
 
 /**
  * Escribe el estado actual del bot en el archivo JSON para que el Panel Web lo lea
@@ -24,7 +24,11 @@ async function enviarEstado(estado, datos = {}) {
         ...datos, 
         timestamp: new Date().toISOString() 
     };
-    fs.writeFileSync(STATE_FILE, JSON.stringify(payload, null, 2));
+    try {
+        fs.writeFileSync(STATE_FILE, JSON.stringify(payload, null, 2));
+    } catch (e) {
+        console.error("Error escribiendo estado:", e);
+    }
 }
 
 /**
@@ -33,7 +37,6 @@ async function enviarEstado(estado, datos = {}) {
 async function esperarRespuesta(estado, preguntaTexto, datosExtra = {}) {
     console.log(`⏳ [Web-Bridge] Esperando respuesta para: ${preguntaTexto}`);
     
-    // Enviamos el estado actual y los datos necesarios (ej: la lista de resultados)
     await enviarEstado(estado, { 
         pregunta: preguntaTexto, 
         waiting: true, 
@@ -60,7 +63,7 @@ async function esperarRespuesta(estado, preguntaTexto, datosExtra = {}) {
 }
 
 // ============================================================================
-// 2. FUNCIONES de SOPORTE Y NAVEGACIÓN
+// 2. FUNCIONES DE SOPORTE Y NAVEGACIÓN
 // ============================================================================
 
 function cargarRecetaPorDominio(dominioBuscado) {
@@ -118,40 +121,55 @@ function generarUrlEpisodio(showUrl, capitulo, receta) {
     return `${urlLimpia}/${capitulo}/`;
 }
 
+/**
+ * FUNCIÓN NINJA: Captura el stream rompiendo capas de anuncios y forzando el Play
+ */
 async function activarVideoSandbox(page) {
-    console.log("\n🎬 Buscando reproductor en frames...");
-    const playSelectors = ['.vjs-big-play-button', '.play-button', '.btn-play', '[class*="play"]', 'video', '.video-play'];
+    console.log("\n🎬 Buscando reproductor y forzando ejecución ninja...");
     const startTime = Date.now();
     
-    while (Date.now() - startTime < 30000) {
+    while (Date.now() - startTime < 45000) { 
         if (global.videoCapturado) return true;
+        
         const frames = page.frames();
         for (const frame of frames) {
             try {
-                // 1. Probar selectores conocidos
-                for (const selector of playSelectors) {
-                    const el = await frame.$(selector);
-                    if (el) {
-                        console.log(`🎯 Botón detectado: ${selector}`);
-                        await frame.evaluate((sel) => { 
-                            const btn = document.querySelector(sel);
-                            if(btn) btn.click(); 
-                        }, selector);
-                        await new Promise(r => setTimeout(r, 3000));
-                        if (global.videoCapturado) return true;
-                    }
+                // Truco 1: Robar el src directo si ya existe
+                const src = await frame.evaluate(() => {
+                    const vid = document.querySelector('video');
+                    return vid ? vid.src : null;
+                });
+                if (src && (src.includes('.m3u8') || src.includes('.mp4')) && !src.startsWith('blob:')) {
+                    global.videoCapturado = src;
+                    return true;
                 }
-                // 2. Click central si es un frame de reproductor
-                if (frame.url().includes('player') || frame.url().includes('mudos')) {
-                    await frame.evaluate(() => {
-                        const elem = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
-                        if (elem) elem.click();
+
+                // Truco 2: Mute + Play forzado (Evita el bloqueo de Autoplay de Chrome)
+                await frame.evaluate(() => {
+                    const videos = document.querySelectorAll('video');
+                    videos.forEach(v => {
+                        v.muted = true; 
+                        v.play().catch(() => {});
                     });
-                    await new Promise(r => setTimeout(r, 3000));
-                    if (global.videoCapturado) return true;
-                }
+                    
+                    const playSelectors = ['.vjs-big-play-button', '.play-button', '.btn-play', '[class*="play"]', '.jw-icon-display', '.plyr__control--overlaid'];
+                    playSelectors.forEach(sel => {
+                        const btn = document.querySelector(sel);
+                        if (btn) btn.click();
+                    });
+                });
             } catch (e) {}
         }
+        
+        // Truco 3: Click físico en el centro de la pantalla para romper overlays
+        try {
+            const { width, height } = await page.evaluate(() => ({ 
+                width: window.innerWidth, 
+                height: window.innerHeight 
+            }));
+            await page.mouse.click(width / 2, height / 2);
+        } catch(e) {}
+
         await new Promise(r => setTimeout(r, 2000));
     }
     return false;
@@ -183,13 +201,15 @@ async function main() {
         connectOption: { defaultViewport: null }
     });
 
+    // CONFIGURACIÓN CRÍTICA PARA DOCKER Y SITIOS LENTOS
+    page.setDefaultNavigationTimeout(90000); 
     await page.evaluateOnNewDocument(() => { window.open = () => null; });
 
     page.on('response', (response) => {
         try {
             const url = response.url().toLowerCase();
             if ((url.includes('.m3u8') || url.includes('.mp4')) && !url.includes('1xbet')) {
-                global.videoCapturado = url;
+                global.videoCapturado = response.url();
                 console.log(`✨ Stream interceptado: ${url}`);
             }
         } catch (e) {}
@@ -200,7 +220,8 @@ async function main() {
         if (!receta) throw new Error(`No se encontró receta para ${ARG_DOMINIO}`);
 
         // --- PASO 1: BÚSQUEDA ---
-        await page.goto(`https://${receta.dominio}`, { waitUntil: 'networkidle2' });
+        // Usamos domcontentloaded para evitar el Timeout de networkidle2
+        await page.goto(`https://${receta.dominio}`, { waitUntil: 'domcontentloaded' });
         await esperarBypass(page);
 
         const sSelector = receta.searchSelector || 'input[type="search"], input[name="q"], #search';
@@ -231,7 +252,7 @@ async function main() {
         const urlBaseFinal = show.href;
 
         // --- PASO 2: FICHA DEL SHOW ---
-        await page.goto(urlBaseFinal, { waitUntil: 'networkidle2' });
+        await page.goto(urlBaseFinal, { waitUntil: 'domcontentloaded' });
         await esperarBypass(page);
 
         // Interacción Panel: Seleccionar Tipo
@@ -242,14 +263,12 @@ async function main() {
         let capituloElegido = 1;
 
         if (clasificacionFinal === 'SERIE') {
-            // EXTRACCIÓN DINÁMICA DE EPISODIOS
             const totalEpisodios = await page.evaluate(() => {
                 const text = document.body.innerText;
                 const m = text.match(/Episodios:\s*(\d+)/i); 
                 return m ? parseInt(m[1], 10) : null;
             });
 
-            // Interacción Panel: Seleccionar Capítulo
             const ep = await esperarRespuesta('SELECT_EPISODE', `Capítulo (1 al ${totalEpisodios || '?'})`, { total: totalEpisodios });
             capituloElegido = parseInt(ep, 10) || 1;
             targetUrl = generarUrlEpisodio(urlBaseFinal, capituloElegido, receta);
@@ -257,10 +276,10 @@ async function main() {
 
         // --- PASO 3: CAPTURA FINAL ---
         console.log(`➡️ Navegando al video final: ${targetUrl}`);
-        await page.goto(targetUrl, { waitUntil: 'networkidle2' });
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
         await esperarBypass(page);
 
-        // Intento de click en reproductor
+        // Intentar click inicial en botones visibles
         const diag = await page.evaluate(() => ({
             hasPlay: document.querySelector('.video-play') !== null,
             servers: Array.from(document.querySelectorAll('li[role="presentation"], .server-item')).map(el => el.innerText.trim())
@@ -274,15 +293,16 @@ async function main() {
             await new Promise(r => setTimeout(r, 4000));
         }
 
+        // Ejecutar el Sandbox agresivo
         await activarVideoSandbox(page);
 
         if (global.videoCapturado) {
-            console.log(`\n🎉 ¡ÉXITO! Enlace: ${global.videoCapturado}`);
+            console.log(`\n🎉 ¡ÉXITO! Enlace capturado: ${global.videoCapturado}`);
             const insert = db.prepare('INSERT INTO contenidos (titulo, clasificacion, episodio, url_final, url_base, dominio, hora_programada, reproducido) VALUES (?, ?, ?, ?, ?, ?, ?, 0)');
             insert.run(ARG_KEYWORD, clasificacionFinal, capituloElegido, global.videoCapturado, urlBaseFinal, ARG_DOMINIO, ARG_HORA);
             await enviarEstado('IDLE', { message: '¡Contenido guardado con éxito!' });
         } else {
-            throw new Error("No se pudo capturar la URL del stream.");
+            throw new Error("No se pudo capturar la URL del stream después de intentar el modo agresivo.");
         }
 
     } catch (e) {
