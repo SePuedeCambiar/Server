@@ -2,9 +2,10 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1/ cutest">
-    <title>TV Orchestrator | Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TV Orchestrator | Control Center</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-dark: #0a0a0a;
@@ -12,65 +13,85 @@
             --neon-purple: #bc13fe;
             --neon-blue: #00d2ff;
             --text-gray: #a0a0a0;
+            --border-color: #222;
         }
         body { 
             background-color: var(--bg-dark); 
             color: white; 
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
+            font-family: 'Inter', sans-serif; 
         }
         .glass-card { 
             background: var(--card-bg); 
-            border: 1px solid #333; 
-            border-radius: 15px; 
-            box-shadow: 0 8px 32px 0 rgba(0,0,0,0.8);
+            border: 1px solid var(--border-color); 
+            border-radius: 16px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
         .live-banner {
             background: linear-gradient(90deg, #ff0055, #bc13fe);
-            border-radius: 10px;
-            padding: 15px;
+            border-radius: 12px;
+            padding: 12px;
             text-align: center;
-            font-weight: bold;
-            margin-bottom: 20px;
+            font-weight: 800;
+            margin-bottom: 25px;
             animation: pulse 2s infinite;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
         @keyframes pulse {
-            0% { opacity: 0.8; }
-            50% { opacity: 1; }
-            100% { opacity: 0.8; }
+            0% { opacity: 0.8; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.01); }
+            100% { opacity: 0.8; transform: scale(1); }
         }
-        .btn-neon-purple {
+        .btn-neon {
             background: var(--neon-purple);
             color: white;
             border: none;
+            font-weight: 600;
             transition: 0.3s;
         }
-        .btn-neon-purple:hover { 
+        .btn-neon:hover { 
             background: #9d0edb; 
             color: white; 
-            box-shadow: 0 0 15px var(--neon-purple); 
+            box-shadow: 0 0 15px var(--neon-purple);
+            transform: translateY(-2px);
         }
         .form-control, .form-select {
             background-color: #1f1f1f !important;
             border: 1px solid #333 !important;
             color: white !important;
         }
-        .table-dark { --bs-table-bg: #111; }
-        .bot-msg {
-            color: var(--neon-blue);
-            font-weight: bold;
-            margin-bottom: 15px;
-            display: block;
+        .form-control:focus, .form-select:focus {
+            border-color: var(--neon-purple) !important;
+            box-shadow: 0 0 0 0.25rem rgba(188, 19, 254, 0.25) !important;
+        }
+        .table-dark { 
+            --bs-table-bg: #111; 
+            border-color: var(--border-color);
+        }
+        .badge-scheduled { background-color: #ffc107; color: black; }
+        .badge-queue { background-color: #6c757d; color: white; }
+        .header-title {
+            font-weight: 800;
+            font-size: 2.5rem;
+            text-align: center;
+            margin-bottom: 30px;
+            background: linear-gradient(to right, #fff, var(--neon-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
     </style>
 </head>
-<body class="container py-4">
+<body class="container py-5">
+
+    <h1 class="header-title">TV SYSTEM ORCHESTRATOR</h1>
 
     <!-- SECCIÓN 1: ESTADO LIVE -->
     <div class="row mb-4">
         <div class="col-12">
             <div class="live-banner shadow">
-                <span class="me-3">🔴 ESTADO: AL AIRE (SISTEMA ACTIVO)</span>
-                <a href="http://localhost:8888/novela" target="_blank" class="btn btn-sm btn-light fw-bold">📺 VER TRANSMISIÓN AHORA</a>
+                <span class="me-3">🔴 EN VIVO: Canal Novela</span>
+                <a href="http://localhost:8888/novela" target="_blank" class="btn btn-sm btn-light fw-bold py-1 px-3">VER STREAM</a>
             </div>
         </div>
     </div>
@@ -81,32 +102,35 @@
             <div class="glass-card p-4 h-100">
                 <h4 class="mb-4">🤖 Asistente de Captura</h4>
                 
-                <!-- PASO 0: INICIO de Búsqueda -->
+                <!-- ESTADO A: Inicio de Búsqueda -->
                 <div id="initSearch">
                     <div class="mb-3">
-                        <label class="form-label text-gray">Sitio de Búsqueda</label>
+                        <label class="form-label text-muted small fw-bold">SITIO DE BÚSQUEDA</label>
                         <select id="siteSelect" class="form-select"></select>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label text-gray">Nombre del Anime/Película</label>
+                    <div class="mb-4">
+                        <label class="form-label text-muted small fw-bold">NOMBRE DEL CONTENIDO</label>
                         <div class="input-group">
-                            <input type="text" id="keyword" class="form-control" placeholder="Ej: Bleach">
-                            <button id="btnStart" class="btn btn-neon-purple" onclick="startBot()">Lanzar Bot</button>
+                            <input type="text" id="keyword" class="form-control" placeholder="Ej: Bleach Sennen Kessen-hen">
+                            <button id="btnStart" class="btn btn-neon" onclick="startBot()">Lanzar Bot</button>
                         </div>
                     </div>
                 </div>
 
-                <!-- PASO DINÁMICO: Consola de Interacción con el Bot -->
-                <div id="botConsole" style="display:none;" class="mt-4 p-3 border border-info rounded bg-dark">
-                    <span class="bot-msg" id="botQuestion">Iniciando bot...</span>
+                <!-- ESTADO B: Consola de Interacción -->
+                <div id="botConsole" style="display:none;" class="mt-3 p-3 border border-info rounded bg-dark shadow-sm">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="spinner-border spinner-border-sm text-info me-2" id="botSpinner"></div>
+                        <h6 id="botQuestion" class="m-0 text-info">Iniciando proceso...</h6>
+                    </div>
                     
-                    <!-- Contenedor de botones (Resultados, Serie/Peli) -->
-                    <div id="botOptions" class="d-grid gap-2"></div>
+                    <div id="botOptions" class="d-grid gap-2">
+                        <!-- Botones dinámicos (Resultados, Serie/Peli, Episodios) -->
+                    </div>
                     
-                    <!-- Contenedor de input (Capítulo) -->
                     <div id="botInputArea" class="mt-3" style="display:none;">
                         <div class="input-group">
-                            <input type="text" id="botAnswer" class="form-control" placeholder="Escribe respuesta...">
+                            <input type="text" id="botAnswer" class="form-control" placeholder="Ej: 12">
                             <button class="btn btn-outline-info" onclick="sendAnswer()">Enviar</button>
                         </div>
                     </div>
@@ -118,7 +142,7 @@
         <div class="col-md-7">
             <div class="glass-card p-4">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4>📋 Cola de Reproducción</h4>
+                    <h4 class="m-0">📋 Próximos Contenidos</h4>
                     <a href="/ver_listas" class="btn btn-sm btn-outline-secondary">Ver Todo</a>
                 </div>
                 <div class="table-responsive">
@@ -131,8 +155,21 @@
                                 <th>Hora</th>
                             </tr>
                         </thead>
-                        <tbody id="queueBody">
-                            <!-- Cargado por JS -->
+                        <tbody>
+                            {% for item in playlist %}
+                            <tr>
+                                <td class="fw-bold">{{ item.titulo }}</td>
+                                <td>{{ item.episodio }}</td>
+                                <td>
+                                    {% if item.hora_programada %}
+                                        <span class="badge badge-scheduled">⏰ {{ item.hora_programada }}</span>
+                                    {% else %}
+                                        <span class="badge badge-queue">📦 Cola</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-muted small">{{ item.dominio }}</td>
+                            </tr>
+                            {% endfor %}
                         </tbody>
                     </table>
                 </div>
@@ -141,36 +178,47 @@
     </div>
 
     <script>
-        // Carga los sitios disponibles al iniciar
+        // 1. Carga la lista de sitios disponibles
         async function loadSites() {
             try {
                 const res = await fetch('/api/sites');
                 const data = await res.json();
                 const select = document.getElementById('siteSelect');
-                select.innerHTML = data.sites.map(s => `<option value="${s}">${s}</option>`).join('');
-            } catch (e) { console.error("Error cargando sitios", e); }
+                if (data.sites && data.sites.length > 0) {
+                    select.innerHTML = data.sites.map(s => `<option value="${s}">${s}</option>`).join('');
+                } else {
+                    select.innerHTML = '<option value="">No hay recetas</option>';
+                }
+            } catch (e) { console.error("Error sites:", e); }
         }
 
-        // Lanza el bot mediante el Manager
+        // 2. Lanza el bot mediante el Manager
         async function startBot() {
             const site = document.getElementById('siteSelect').value;
             const kw = document.getElementById('keyword').value;
-            if(!kw) return alert("Por favor escribe un nombre para buscar");
+            if(!kw) return alert("Escribe el nombre del anime");
 
-            // Enviamos la petición POST al manager
             await fetch('/add_content', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: `dominio=${site}&keyword=${kw}`
             });
 
-            // Cambiamos la interfaz a modo "Consola"
             document.getElementById('initSearch').style.display = 'none';
             document.getElementById('botConsole').style.display = 'block';
             startPolling();
         }
 
-        // Envía una respuesta de texto (ej: el número de capítulo)
+        // 3. Envía respuestas simples (índice del show, S/P, número de capítulo)
+        async function sendSimpleAnswer(val) {
+            await fetch('/api/bot_answer', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ respuesta: val })
+            });
+        }
+
+        // 4. Envía respuestas de texto manual (campo de input)
         async function sendAnswer() {
             const resp = document.getElementById('botAnswer').value;
             if(!resp) return;
@@ -182,16 +230,7 @@
             document.getElementById('botAnswer').value = '';
         }
 
-        // Envía una respuesta rápida (click en botón)
-        async function sendSimpleAnswer(val) {
-            await fetch('/api/bot_answer', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ respuesta: val })
-            });
-        }
-
-        // El "Corazón" del Panel: Pregunta al servidor cada 2 seg qué quiere el bot
+        // 5. Corazón del Sistema: Sincronización en tiempo real con el Bot
         async function startPolling() {
             setInterval(async () => {
                 try {
@@ -201,61 +240,75 @@
                     const qText = document.getElementById('botQuestion');
                     const options = document.getElementById('botOptions');
                     const inputArea = document.getElementById('botInputArea');
+                    const spinner = document.getElementById('botSpinner');
 
-                    if(state.estado === 'SELECT_SHOW') {
-                        qText.innerText = "🔎 Resultados encontrados. Selecciona el correcto:";
+                    // ESTADO: Seleccionar el Show de la lista
+                    if(state.estado === 'SELECT_SHOW' && state.resultados) {
+                        spinner.style.display = 'none';
+                        qText.innerText = "🔍 Resultados encontrados. Selecciona uno:";
                         options.innerHTML = state.resultados.map((r, i) => 
-                            `<button class="btn btn-sm btn-outline-light text-start" onclick="sendSimpleAnswer('${i+1}')">${i+1}. ${r.text}</button>`
+                            `<button class="btn btn-sm btn-outline-light text-start mb-1 w-100" onclick="sendSimpleAnswer('${i+1}')">${i+1}. ${r.text}</button>`
                         ).join('');
                         inputArea.style.display = 'none';
                     } 
+                    // ESTADO: Elegir entre Serie o Película
                     else if(state.estado === 'SELECT_TYPE') {
-                        qText.innerText = `📌 ¿${state.titulo} es una Serie o una Película?`;
+                        spinner.style.display = 'none';
+                        qText.innerText = `❓ ¿"${state.titulo || 'El show'}" es Serie o Película?`;
                         options.innerHTML = `
-                            <button class="btn btn-sm btn-outline-light" onclick="sendSimpleAnswer('S')">Serie</button>
-                            <button class="btn btn-sm btn-outline-light" onclick="sendSimpleAnswer('P')">Película/OVA</button>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-neon w-50" onclick="sendSimpleAnswer('S')">📺 Serie</button>
+                                <button class="btn btn-outline-light w-50" onclick="sendSimpleAnswer('P')">🎬 Película/OVA</button>
+                            </div>
                         `;
                         inputArea.style.display = 'none';
                     } 
+                    // ESTADO: Ingresar Número de Capítulo
                     else if(state.estado === 'SELECT_EPISODE') {
-                        qText.innerText = `🔢 Indica el número de episodio de ${state.titulo}:`;
-                        options.innerHTML = '';
+                        spinner.style.display = 'none';
+                        const total = state.total || '?';
+                        qText.innerText = `🔢 Indica el capítulo para ${state.titulo || 'el show'} (Total: ${total}):`;
+                        
+                        // Si hay pocos episodios, generamos botones rápidos
+                        if(state.total && state.total <= 50) {
+                            let buttons = '';
+                            for(let i = 1; i <= state.total; i++) {
+                                buttons += `<button class="btn btn-sm btn-outline-light m-1" onclick="sendSimpleAnswer('${i}')">${i}</button>`;
+                            }
+                            options.innerHTML = `<div class="d-flex flex-wrap justify-content-center">${buttons}</div>`;
+                        } else {
+                            options.innerHTML = `<p class="text-muted small text-center">Demasiados episodios. Escribe el número abajo.</p>`;
+                        }
                         inputArea.style.display = 'block';
                     } 
-                    else if(state.estado === 'ERROR') {
-                        qText.innerText = "❌ Error: " + state.message;
-                        options.innerHTML = '<button class="btn btn-danger" onclick="location.reload()">Reiniciar Bot</button>';
+                    // ESTADO: Finalizado con éxito
+                    else if(state.estado === 'IDLE') {
+                        spinner.style.display = 'none';
+                        qText.innerText = "✅ ¡Captura completada con éxito!";
+                        options.innerHTML = '<button class="btn btn-success w-100" onclick="location.reload()">Nueva Búsqueda</button>';
                         inputArea.style.display = 'none';
                     } 
-                    else if(state.estado === 'IDLE') {
-                        qText.innerText = "✅ ¡Captura completada con éxito!";
-                        options.innerHTML = '<button class="btn btn-success" onclick="location.reload()">Nueva Búsqueda</button>';
+                    // ESTADO: Error ocurrido
+                    else if(state.estado === 'ERROR') {
+                        spinner.style.display = 'none';
+                        qText.innerText = "❌ Error: " + (state.message || "Ocurrió un problema");
+                        options.innerHTML = '<button class="btn btn-danger w-100" onclick="location.reload()">Reintentar</button>';
+                        inputArea.style.display = 'none';
+                    } 
+                    // ESTADO: Trabajando / Navegando / Bypass
+                    else {
+                        spinner.style.display = 'inline-block';
+                        qText.innerText = "🤖 El bot está navegando... espera un momento...";
+                        options.innerHTML = '';
                         inputArea.style.display = 'none';
                     }
-                } catch (e) { console.error("Error en polling:", e); }
+                } catch (e) {
+                    console.error("Polling error:", e);
+                }
             }, 2000);
         }
 
-        // Actualiza la cola de reproducción cada 10 segundos
-        async function updateQueue() {
-            try {
-                const res = await fetch('/');
-                const text = await res.text();
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(text, 'text/html');
-                const rows = doc.querySelectorAll('tbody tr');
-                
-                const body = document.getElementById('queueBody');
-                body.innerHTML = '';
-                rows.forEach(row => { body.innerHTML += row.outerHTML; });
-            } catch (e) { console.error("Error actualizando cola", e); }
-        }
-
-        window.onload = () => { 
-            loadSites(); 
-            updateQueue(); 
-            setInterval(updateQueue, 10000); 
-        };
+        window.onload = loadSites;
     </script>
 </body>
 </html>
