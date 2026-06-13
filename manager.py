@@ -26,7 +26,7 @@ proceso_grabador = None
 
 # Configuración de rutas
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'playlist.db')
+DB_PATH = os.path.join(BASE_DIR, 'data', 'playlist.db')
 CONFIGS_DIR = os.path.join(BASE_DIR, 'configs')
 STATE_FILE = os.path.join(CONFIGS_DIR, 'bot_state.json')
 os.makedirs(CONFIGS_DIR, exist_ok=True)

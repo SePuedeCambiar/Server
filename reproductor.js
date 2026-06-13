@@ -6,7 +6,7 @@ const Database = require('better-sqlite3');
 // ============================================================================
 // 1. CONFIGURACIÓN DE BASE DE DATOS Y ESTADO
 // ============================================================================
-const db = new Database('playlist.db');
+const db = new Database('data/playlist.db');
 db.pragma('journal_mode = WAL');
 
 // Archivo puente para comunicarse con el manager.py y el index.html

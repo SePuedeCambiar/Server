@@ -11,7 +11,7 @@ from datetime import datetime
 # ==============================================================================
 class Config:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    DB_PATH = os.path.join(BASE_DIR, "playlist.db")
+    DB_PATH = os.path.join(BASE_DIR, "data", "playlist.db")
     LOG_FILE = os.path.join(BASE_DIR, "tv_system.log")
     FFMPEG_LOG = os.path.join(BASE_DIR, "ffmpeg_errors.log")
     COOKIES_FILE = os.path.join(BASE_DIR, "cookies.txt")

@@ -17,9 +17,9 @@ services:
     build: .
     container_name: tv-orchestrator
     ports:
-      - "9001:9001" # Solo dejamos el panel de control
+      - "9001:9001"
     volumes:
-      - ./playlist.db:/app/playlist.db
+      - ./data:/app/data             # ← CAMBIADO: Ahora montamos la carpeta data completa
       - ./configs:/app/configs
       - ./assets:/app/assets
       - /dev/shm:/dev/shm

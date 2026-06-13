@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timedelta
 
 # --- CONFIGURACIÓN ---
-DB_NAME = 'playlist.db'
+DB_NAME = 'data/playlist.db'
 # Definimos que una URL expira después de 4 horas (ajustable)
 HORAS_EXPIRACION = 4
 
