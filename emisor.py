@@ -21,11 +21,7 @@ class Config:
     RTMP_URL = "rtmp://mediamtx:1935/novela"
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-    # --------------------------------------------------------------------------
-    # AJUSTES DE RENDIMIENTO (EL CORAZÓN DE LA OPTIMIZACIÓN)
-    # --------------------------------------------------------------------------
-    # 'copy'     -> NO renderiza. Solo mueve datos. CPU < 5%. Ideal para Celeron.
-    # 'transcode'-> Renderiza todo a 720p. CPU Alta. Solo usar si el video original es gigante.
+    # MODO_EMISION
     MODO_EMISION = 'copy' 
 
     # Parámetros para modo 'transcode' (Renderizado tradicional)
@@ -37,16 +33,14 @@ class Config:
         "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k", "-f", "flv"
     ]
 
-    # Parámetros para modo 'copy' - ARCHIVOS LOCALES (MP4 descargados por yt-dlp)
-    # Como ya son H264+AAC, hacemos una copia pura. 0% de CPU.
+    # Parámetros para modo 'copy' - ARCHIVOS LOCALES
     FFMPEG_COPY_PURE = [
         "-c:v", "copy",
         "-c:a", "copy",
         "-f", "flv"
     ]
 
-    # Parámetros para modo 'copy' - STREAMS REMOTOS (HLS/m3u8)
-    # Copiamos el video (0% CPU) pero aseguramos que el audio sea AAC para evitar errores en RTMP.
+    # Parámetros para modo 'copy' - STREAMS REMOTOS
     FFMPEG_COPY_SMART = [
         "-c:v", "copy",
         "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k",
@@ -112,8 +106,18 @@ class Downloader:
 
         if ".m3u8" in url:
             logger.info(f"[BG] Registrando marcador HLS para ID {video_id}")
+            
+            # 📡 DETERMINACIÓN DINÁMICA DEL REFERER BASADO EN LA DB
+            try:
+                dominio = video_data['dominio'] if video_data['dominio'] else 'jkanime.net'
+            except Exception:
+                dominio = 'jkanime.net'
+            
+            referer = f"https://{dominio}/"
+            logger.info(f"[BG] Configurando Referer para el reproductor: {referer}")
+
             with open(f"{self.almacen}/next_{video_id}.url", "w") as f:
-                f.write(f"{url}\nhttps://jkanime.net/")
+                f.write(f"{url}\n{referer}")
             return True
 
         logger.info(f"[BG] Descargando MP4 para ID {video_id} vía yt-dlp...")
@@ -133,7 +137,7 @@ class Downloader:
             return False
 
 # ==============================================================================
-# MÓDULO DE TRANSMISIÓN (OPTIMIZADO PARA CELERON)
+# MÓDULO DE TRANSMISIÓN
 # ==============================================================================
 class Streamer:
     def __init__(self):
@@ -151,9 +155,9 @@ class Streamer:
                 stream_url, referer = lines[0], lines[1]
 
             logger.info(f"🎬 TRANSMITIENDO HLS VIVO: {stream_url}")
+            logger.info(f"🔑 Referer utilizado: {referer}")
             
             if Config.MODO_EMISION == 'copy':
-                # Copia video (0% CPU), transcodifica solo audio (AAC) para compatibilidad RTMP
                 comando = [
                     "ffmpeg", "-y", "-re",
                     "-thread_queue_size", "2048",
@@ -164,7 +168,6 @@ class Streamer:
                     *Config.FFMPEG_COPY_SMART, self.rtmp_url
                 ]
             else:
-                # Renderizado completo (CPU ALTA)
                 comando = [
                     "ffmpeg", "-y", "-re",
                     "-thread_queue_size", "2048",
@@ -181,14 +184,12 @@ class Streamer:
             logger.info(f"🎬 TRANSMITIENDO ARCHIVO RAM: {url_file}")
             
             if Config.MODO_EMISION == 'copy':
-                # Copia pura: No toca ni un solo píxel. 0% CPU.
                 comando = [
                     "ffmpeg", "-y", "-readrate", "1.3", 
                     "-i", url_file,
                     *Config.FFMPEG_COPY_PURE, self.rtmp_url
                 ]
             else:
-                # Renderizado completo (CPU ALTA)
                 comando = [
                     "ffmpeg", "-y", "-readrate", "1.3", 
                     "-i", url_file, "-vf", Config.VIDEO_SCALE,
@@ -222,7 +223,6 @@ class TVExecutor:
         self.is_downloading = False
 
     def monitor_progress(self, video_id, duration):
-        # Espera al 80% de la duración del video actual para empezar a bajar el siguiente
         time.sleep(duration * 0.8)
         if not self.is_downloading:
             self.disparar_siguiente()
@@ -249,16 +249,13 @@ class TVExecutor:
                 time.sleep(30)
                 continue
 
-            # Asegurar que el video actual esté descargado antes de emitir
             if not os.path.exists(f"{Config.ALMACEN}/next_{actual['id']}.mp4") and \
                not os.path.exists(f"{Config.ALMACEN}/next_{actual['id']}.url"):
                 self.downloader.descargar(actual)
 
-            # Lanzar prefetch del siguiente video basándose en la duración
             duracion = actual.get('duracion', 1200) if isinstance(actual, dict) else 1200
             Thread(target=self.monitor_progress, args=(actual['id'], duracion), daemon=True).start()
 
-            # Emitir el video
             if self.streamer.emitir(actual):
                 logger.info(f"✅ Finalizado: {actual['titulo']}")
                 self.db.marcar_reproducido(actual['id'])
