@@ -23,7 +23,7 @@ class Config:
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
     # MODO_EMISION
-    MODO_EMISION = 'copy' 
+    MODO_EMISION = 'copy'
 
     # Parámetros para modo 'transcode' (Renderizado tradicional)
     VIDEO_SCALE = "scale=1280:720,fps=25,format=yuv420p"
@@ -78,8 +78,8 @@ class PlaylistDB:
 
         # 1. Contenido programado
         cursor.execute("""
-            SELECT * FROM contenidos 
-            WHERE reproducido = 0 AND hora_programada IS NOT NULL AND hora_programada <= ? 
+            SELECT * FROM contenidos
+            WHERE reproducido = 0 AND hora_programada IS NOT NULL AND hora_programada <= ?
             ORDER BY hora_programada ASC LIMIT 1
         """, (ahora_str,))
         res = cursor.fetchone()
@@ -107,13 +107,13 @@ class Downloader:
 
         if ".m3u8" in url:
             logger.info(f"[BG] Registrando marcador HLS para ID {video_id}")
-            
+
             # Determinamos el referer dinámico preciso usando url_base de la película
             try:
                 referer = video_data['url_base'] if video_data['url_base'] else f"https://{video_data['dominio']}/"
             except Exception:
                 referer = "https://jkanime.net/"
-            
+
             # 📡 Si el video proviene de Cuevana o un CDN de Filelions, lo procesamos por nuestro de-ofuscador local (FastAPI)
             if "cuevana" in referer or "tiktok" in url or "shopping" in url or "image" in url:
                 safe_url = urllib.parse.quote(url, safe='')
@@ -122,7 +122,7 @@ class Downloader:
                 logger.info(f"[BG] Re-enrutando HLS a través de proxy local de-ofuscador...")
             else:
                 proxied_url = url
-                
+
             logger.info(f"[BG] Configurando Referer para el reproductor HLS: {referer}")
 
             with open(f"{self.almacen}/next_{video_id}.url", "w") as f:
@@ -165,14 +165,15 @@ class Streamer:
 
             logger.info(f"🎬 TRANSMITIENDO HLS VIVO: {stream_url}")
             logger.info(f"🔑 Referer utilizado: {referer}")
-            
+
             if Config.MODO_EMISION == 'copy':
                 comando = [
                     "ffmpeg", "-y", "-re",
                     "-thread_queue_size", "4096",
                     "-protocol_whitelist", "file,http,https,tcp,tls,crypto,data",
-                    "-allowed_extensions", "ALL",          # Banderas de evasión para FFmpeg v7
-                    "-allowed_segment_extensions", "ALL",  # Banderas de evasión para FFmpeg v7
+                    "-extension_picky", "0",                               # Ignorar validación estricta HLS
+                    "-allowed_extensions", "ts,m3u8,m3u,image,png,jpg,txt,mp4",
+                    "-allowed_segment_extensions", "ts,m3u8,m3u,image,png,jpg,txt,mp4",
                     "-fflags", "+genpts+discardcorrupt",
                     "-referer", referer, "-user_agent", Config.USER_AGENT,
                     "-i", stream_url,
@@ -183,8 +184,9 @@ class Streamer:
                     "ffmpeg", "-y", "-re",
                     "-thread_queue_size", "4096",
                     "-protocol_whitelist", "file,http,https,tcp,tls,crypto,data",
-                    "-allowed_extensions", "ALL",          # Banderas de evasión para FFmpeg v7
-                    "-allowed_segment_extensions", "ALL",  # Banderas de evasión para FFmpeg v7
+                    "-extension_picky", "0",                               # Ignorar validación estricta HLS
+                    "-allowed_extensions", "ts,m3u8,m3u,image,png,jpg,txt,mp4",
+                    "-allowed_segment_extensions", "ts,m3u8,m3u,image,png,jpg,txt,mp4",
                     "-fflags", "+genpts+discardcorrupt",
                     "-referer", referer, "-user_agent", Config.USER_AGENT,
                     "-i", stream_url, "-vf", Config.VIDEO_SCALE,
@@ -195,16 +197,16 @@ class Streamer:
         # --- CASO 2: ARCHIVO LOCAL (MP4 en RAM) ---
         elif os.path.exists(url_file):
             logger.info(f"🎬 TRANSMITIENDO ARCHIVO RAM: {url_file}")
-            
+
             if Config.MODO_EMISION == 'copy':
                 comando = [
-                    "ffmpeg", "-y", "-readrate", "1.3", 
+                    "ffmpeg", "-y", "-readrate", "1.3",
                     "-i", url_file,
                     *Config.FFMPEG_COPY_PURE, self.rtmp_url
                 ]
             else:
                 comando = [
-                    "ffmpeg", "-y", "-readrate", "1.3", 
+                    "ffmpeg", "-y", "-readrate", "1.3",
                     "-i", url_file, "-vf", Config.VIDEO_SCALE,
                     *Config.FFMPEG_TRANSCODE_PARAMS, self.rtmp_url
                 ]
@@ -217,22 +219,22 @@ class Streamer:
         try:
             # Capturamos stderr para poder volcarlo en Docker compose logs en caso de falla
             result = subprocess.run(comando, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-            
+
             if result.returncode != 0:
                 logger.error(f"❌ FFmpeg falló con código {result.returncode}.")
                 logger.error(f"🔍 DETALLES DE ERROR FFMPEG (STDOUT/STDERR):\n{result.stderr}")
-                
+
                 # También lo guardamos en el archivo log histórico de errores
                 with open(Config.FFMPEG_LOG, "a") as log:
                     log.write(f"\n--- ERROR FFmpeg (Code {result.returncode}) {datetime.now()} ---\n")
                     log.write(result.stderr)
                 return False
-                
+
             if os.path.exists(path_to_clean):
                 os.remove(path_to_clean)
             return True
         except Exception as e:
-            logger.error(f"❌ Error ejecutando subprocess FFmpeg: {e}")
+            logger.error(f"❌ Error executing subprocess FFmpeg: {e}")
             return False
 
 # ==============================================================================

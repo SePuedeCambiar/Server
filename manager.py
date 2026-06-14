@@ -9,7 +9,7 @@ import json
 import jinja2
 import logging
 import requests
-import urllib.parse  # 👈 Importación crítica para escapar parámetros en el proxy
+import urllib.parse  # 👈 Importación para escapar parámetros en el proxy
 
 # ==============================================================================
 # 1. CONFIGURACIÓN DE LOGS Y SISTEMA
@@ -97,11 +97,11 @@ async def bot_answer(request: Request):
     try:
         data = await request.json()
         respuesta = data.get("respuesta")
-        
+
         if os.path.exists(STATE_FILE):
             with open(STATE_FILE, "r", encoding="utf-8") as f:
                 state = json.load(f)
-            
+
             state["respuesta"] = respuesta
             with open(STATE_FILE, "w", encoding="utf-8") as f:
                 json.dump(state, f, indent=2)
@@ -117,7 +117,7 @@ async def upload_recipe(request: Request):
         data = await request.json()
         dominio = data.get("dominio")
         if not dominio: return {"status": "error", "message": "Dominio obligatorio."}
-        
+
         file_path = os.path.join(CONFIGS_DIR, f"{dominio}_receta.json")
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
@@ -155,7 +155,7 @@ async def ver_listas(request: Request):
 
 @app.post("/add_content")
 async def add_content(
-    dominio: str = Form(...), 
+    dominio: str = Form(...),
     keyword: str = Form(...)
 ):
     """Lanza el bot de captura interactivo"""
@@ -173,7 +173,7 @@ async def add_content(
 
     env = os.environ.copy()
     comando = ["node", "reproductor.js", f"--dominio={dominio}", f"--keyword={keyword}"]
-    
+
     try:
         proceso_grabador = subprocess.Popen(comando, env=env)
         logger.info(f"🤖 Bot interactivo lanzado: {keyword} en {dominio}")
@@ -209,35 +209,42 @@ def proxy_manifest(url: str = Query(...), referer: str = Query(...)):
         r = requests.get(url, headers=headers, timeout=15)
         if r.status_code != 200:
             return Response(content="Error cargando m3u8", status_code=r.status_code)
-        
+
         lines = r.text.splitlines()
         new_lines = []
         base_url = url.rsplit('/', 1)[0]
         
+        # Bandera de contexto: detecta si la siguiente línea es una sub-playlist
+        es_subplaylist = False
+
         for line in lines:
             line_strip = line.strip()
             if not line_strip:
                 continue
-            
-            if not line_strip.startswith("#"):
+
+            if line_strip.startswith("#EXT-X-STREAM-INF"):
+                es_subplaylist = True
+                new_lines.append(line)
+            elif not line_strip.startswith("#"):
                 # Convertir URL relativa a absoluta si es necesario
                 abs_url = line_strip if line_strip.startswith("http") else f"{base_url}/{line_strip}"
-                
+
                 # Codificar parámetros de forma segura para evitar roturas
                 safe_abs_url = urllib.parse.quote(abs_url, safe='')
                 safe_referer = urllib.parse.quote(referer, safe='')
-                
-                if ".m3u8" in abs_url.lower():
-                    # RECURSIVIDAD: Si la línea apunta a otra sub-playlist m3u8, la mandamos al proxy de manifest
+
+                # Si el contexto dictó que es playlist, O la URL grita explícitamente que lo es
+                if es_subplaylist or ".m3u" in abs_url.lower():
                     proxy_url = f"http://localhost:9001/proxy/manifest.m3u8?url={safe_abs_url}&referer={safe_referer}"
+                    es_subplaylist = False  # Resetear contexto
                 else:
                     # Si apunta a un fragmento de video (.image, .ts, etc.), al de-ofuscador de bytes
                     proxy_url = f"http://localhost:9001/proxy/segment.ts?url={safe_abs_url}&referer={safe_referer}"
-                
+
                 new_lines.append(proxy_url)
             else:
                 new_lines.append(line)
-                
+
         return Response(content="\n".join(new_lines), media_type="application/vnd.apple.mpegurl")
     except Exception as e:
         logger.error(f"Error en proxy manifest: {e}")
@@ -259,10 +266,10 @@ def proxy_segment(url: str = Query(...), referer: str = Query(...)):
         r = requests.get(url, headers=headers, timeout=30)
         if r.status_code != 200:
             return Response(content="Error cargando fragmento", status_code=r.status_code)
-        
+
         data = r.content
         data_len = len(data)
-        
+
         # Algoritmo de de-ofuscación genérico por alineación:
         # Buscamos el byte de sincronización MPEG-TS (0x47) alineado cada 188 bytes en 4 paquetes
         start_idx = 0
@@ -270,13 +277,13 @@ def proxy_segment(url: str = Query(...), referer: str = Query(...)):
             if data[i] == 0x47 and data[i + 188] == 0x47 and data[i + 188 * 2] == 0x47 and data[i + 188 * 3] == 0x47:
                 start_idx = i
                 break
-                
+
         # Si se detecta el patrón, recortamos el encabezado PNG del principio
         if start_idx > 0:
             clean_ts = data[start_idx:]
         else:
             clean_ts = data  # Fallback si ya era un TS limpio o el escaneo no arrojó coincidencias
-            
+
         return Response(content=clean_ts, media_type="video/mp2t")
     except Exception as e:
         logger.error(f"Error en de-ofuscador de segmentos: {e}")
