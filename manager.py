@@ -9,6 +9,7 @@ import json
 import jinja2
 import logging
 import requests
+import urllib.parse
 
 # ==============================================================================
 # 1. CONFIGURACIÓN DE LOGS Y SISTEMA
@@ -68,6 +69,19 @@ def get_db_connection():
 @app.get("/api/ping")
 async def ping():
     return {"status": "ok", "message": "Servidor de TV conectado correctamente."}
+
+@app.get("/api/get_last_link")
+async def get_last_link():
+    """Devuelve el último link procesado"""
+    conn = get_db_connection()
+    if conn:
+        try:
+            row = conn.execute("SELECT url_final FROM contenidos ORDER BY id DESC LIMIT 1").fetchone()
+            if row:
+                return {"url": row["url_final"]}
+        finally:
+            conn.close()
+    return {"url": None}
 
 @app.get("/api/sites")
 async def get_sites():
@@ -191,14 +205,14 @@ async def delete_video(video_id: int):
     return RedirectResponse(url="/ver_listas", status_code=303)
 
 # ==============================================================================
-# 5. PROXY DE-OFUSCADOR DE VIDEO EN VIVO (CUEVANA / FILELIONS BYPASS)
+# 5. PROXY DE-OFUSCADOR DE VIDEO EN VIVO (RECURSIVO)
 # ==============================================================================
 
 @app.get("/proxy/manifest.m3u8")
 def proxy_manifest(url: str = Query(...), referer: str = Query(...)):
     """
     Descarga el manifiesto original y re-escribe las URLs de los segmentos
-    para que se procesen a través de nuestro desofuscador local.
+    y de las sub-playlists para que se procesen a través de nuestro proxy.
     """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -215,15 +229,24 @@ def proxy_manifest(url: str = Query(...), referer: str = Query(...)):
         
         for line in lines:
             line_strip = line.strip()
-            if line_strip and not line_strip.startswith("#"):
+            if not line_strip: 
+                continue
+            
+            if not line_strip.startswith("#"):
                 # Convertir URL relativa a absoluta si es necesario
-                if not line_strip.startswith("http"):
-                    abs_url = f"{base_url}/{line_strip}"
-                else:
-                    abs_url = line_strip
+                abs_url = line_strip if line_strip.startswith("http") else f"{base_url}/{line_strip}"
                 
-                # Re-enrutamos el segmento hacia nuestro desofuscador de bytes local
-                proxy_url = f"http://localhost:9001/proxy/segment.ts?url={abs_url}&referer={referer}"
+                # RECURSIVIDAD: Si la línea apunta a otra sub-playlist (.m3u8)
+                if ".m3u8" in abs_url.lower():
+                    safe_url = urllib.parse.quote(abs_url, safe='')
+                    safe_ref = urllib.parse.quote(referer, safe='')
+                    proxy_url = f"http://localhost:9001/proxy/manifest.m3u8?url={safe_url}&referer={safe_ref}"
+                else:
+                    # Si apunta a un segmento de video (.ts, .image, .png, etc.)
+                    safe_url = urllib.parse.quote(abs_url, safe='')
+                    safe_ref = urllib.parse.quote(referer, safe='')
+                    proxy_url = f"http://localhost:9001/proxy/segment.ts?url={safe_url}&referer={safe_ref}"
+                
                 new_lines.append(proxy_url)
             else:
                 new_lines.append(line)

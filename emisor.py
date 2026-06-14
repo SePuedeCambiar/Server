@@ -95,7 +95,7 @@ class PlaylistDB:
         self.conn.commit()
 
 # ==============================================================================
-# MÓDULO DE DESCARGA (CON DIRECCIONAMIENTO A PROXY LOCAL)
+# MÓDULO DE DESCARGA (CON REDIRECCIONAMIENTO ESCAPADO A PROXY LOCAL)
 # ==============================================================================
 class Downloader:
     def __init__(self):
@@ -116,7 +116,10 @@ class Downloader:
             
             # 📡 Si el video proviene de Cuevana o un CDN de Filelions, lo procesamos por nuestro de-ofuscador local (FastAPI)
             if "cuevana" in referer or "tiktok" in url or "shopping" in url or "image" in url:
-                proxied_url = f"http://localhost:9001/proxy/manifest.m3u8?url={urllib.parse.quote(url)}&referer={urllib.parse.quote(referer)}"
+                # Usamos urllib.parse.quote para codificar perfectamente los parámetros en la consulta URL
+                safe_url = urllib.parse.quote(url, safe='')
+                safe_referer = urllib.parse.quote(referer, safe='')
+                proxied_url = f"http://localhost:9001/proxy/manifest.m3u8?url={safe_url}&referer={safe_referer}"
                 logger.info(f"[BG] Re-enrutando HLS a través de proxy local de-ofuscador...")
             else:
                 proxied_url = url
@@ -144,7 +147,7 @@ class Downloader:
             return False
 
 # ==============================================================================
-# MÓDULO DE TRANSMISIÓN (CON VERBOSE LOGS DE ERROR EN CONSOLA)
+# MÓDULO DE TRANSMISIÓN (CON BYPASS DE RESTRICCIONES DE EXTENSIÓN FFMPEG 7.X)
 # ==============================================================================
 class Streamer:
     def __init__(self):
@@ -167,8 +170,10 @@ class Streamer:
             if Config.MODO_EMISION == 'copy':
                 comando = [
                     "ffmpeg", "-y", "-re",
-                    "-thread_queue_size", "2048",
+                    "-thread_queue_size", "4096",
                     "-protocol_whitelist", "file,http,https,tcp,tls,crypto,data",
+                    "-allowed_extensions", "ALL",          # 👈 OBLIGATORIO PARA FFMPEG V7 (BYPASS DE RUTA PROXIED)
+                    "-allowed_segment_extensions", "ALL",  # 👈 OBLIGATORIO PARA FFMPEG V7 (BYPASS DE RUTA PROXIED)
                     "-fflags", "+genpts+discardcorrupt",
                     "-referer", referer, "-user_agent", Config.USER_AGENT,
                     "-i", stream_url,
@@ -177,8 +182,10 @@ class Streamer:
             else:
                 comando = [
                     "ffmpeg", "-y", "-re",
-                    "-thread_queue_size", "2048",
+                    "-thread_queue_size", "4096",
                     "-protocol_whitelist", "file,http,https,tcp,tls,crypto,data",
+                    "-allowed_extensions", "ALL",
+                    "-allowed_segment_extensions", "ALL",
                     "-fflags", "+genpts+discardcorrupt",
                     "-referer", referer, "-user_agent", Config.USER_AGENT,
                     "-i", stream_url, "-vf", Config.VIDEO_SCALE,
