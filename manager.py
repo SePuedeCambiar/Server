@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Request, Form, Response, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.templating import Jinja2Templates
@@ -8,6 +8,7 @@ import os
 import json
 import jinja2
 import logging
+import requests
 
 # ==============================================================================
 # 1. CONFIGURACIÓN DE LOGS Y SISTEMA
@@ -124,8 +125,8 @@ async def upload_recipe(request: Request):
         return {"status": "error", "message": str(e)}
 
 # ==============================================================================
-#// 4. RUTAS DEL PANEL DE CONTROL (HTML)
-#// ==============================================================================
+# 4. RUTAS DEL PANEL DE CONTROL (HTML)
+# ==============================================================================
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
@@ -159,20 +160,17 @@ async def add_content(
     """Lanza el bot de captura interactivo"""
     global proceso_grabador
 
-    # 1. Protección de RAM (Celeron)
+    # Protección de RAM (Celeron)
     if proceso_grabador is not None:
         proceso_grabador.poll()
         if proceso_grabador.returncode is None:
             return HTMLResponse(content="⚠️ El bot ya está trabajando. Espera a que termine.", status_code=429)
 
-    # 2. Limpiar estado previo antes de iniciar un nuevo bot
+    # Limpiar estado previo antes de iniciar un nuevo bot
     if os.path.exists(STATE_FILE):
         os.remove(STATE_FILE)
 
-    # 3. Lanzar bot con argumentos necesarios
     env = os.environ.copy()
-    # env["DISPLAY"] = ":0" # Requerido para Puppeteer aunque sea headless en algunos casos
-    
     comando = ["node", "reproductor.js", f"--dominio={dominio}", f"--keyword={keyword}"]
     
     try:
@@ -191,6 +189,88 @@ async def delete_video(video_id: int):
         conn.commit()
         conn.close()
     return RedirectResponse(url="/ver_listas", status_code=303)
+
+# ==============================================================================
+# 5. PROXY DE-OFUSCADOR DE VIDEO EN VIVO (CUEVANA / FILELIONS BYPASS)
+# ==============================================================================
+
+@app.get("/proxy/manifest.m3u8")
+def proxy_manifest(url: str = Query(...), referer: str = Query(...)):
+    """
+    Descarga el manifiesto original y re-escribe las URLs de los segmentos
+    para que se procesen a través de nuestro desofuscador local.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": referer
+    }
+    try:
+        r = requests.get(url, headers=headers, timeout=15)
+        if r.status_code != 200:
+            return Response(content="Error cargando m3u8", status_code=r.status_code)
+        
+        lines = r.text.splitlines()
+        new_lines = []
+        base_url = url.rsplit('/', 1)[0]
+        
+        for line in lines:
+            line_strip = line.strip()
+            if line_strip and not line_strip.startswith("#"):
+                # Convertir URL relativa a absoluta si es necesario
+                if not line_strip.startswith("http"):
+                    abs_url = f"{base_url}/{line_strip}"
+                else:
+                    abs_url = line_strip
+                
+                # Re-enrutamos el segmento hacia nuestro desofuscador de bytes local
+                proxy_url = f"http://localhost:9001/proxy/segment.ts?url={abs_url}&referer={referer}"
+                new_lines.append(proxy_url)
+            else:
+                new_lines.append(line)
+                
+        return Response(content="\n".join(new_lines), media_type="application/vnd.apple.mpegurl")
+    except Exception as e:
+        logger.error(f"Error en proxy manifest: {e}")
+        return Response(content=f"Error en proxy manifest: {e}", status_code=500)
+
+
+@app.get("/proxy/segment.ts")
+def proxy_segment(url: str = Query(...), referer: str = Query(...)):
+    """
+    Descarga el fragmento ofuscado (.image / .png), detecta de forma genérica
+    dónde termina la imagen PNG basándose en la alineación de sincronización
+    MPEG-TS (0x47 cada 188 bytes) y sirve el flujo de video limpio.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": referer
+    }
+    try:
+        r = requests.get(url, headers=headers, timeout=30)
+        if r.status_code != 200:
+            return Response(content="Error cargando fragmento", status_code=r.status_code)
+        
+        data = r.content
+        data_len = len(data)
+        
+        # Algoritmo de de-ofuscación genérico por alineación:
+        # Buscamos el byte de sincronización MPEG-TS (0x47) alineado cada 188 bytes en 4 paquetes
+        start_idx = 0
+        for i in range(min(150000, data_len - 188 * 4)):  # Escaneamos los primeros 150KB del archivo
+            if data[i] == 0x47 and data[i + 188] == 0x47 and data[i + 188 * 2] == 0x47 and data[i + 188 * 3] == 0x47:
+                start_idx = i
+                break
+                
+        # Si se detecta el patrón, recortamos el encabezado PNG del principio
+        if start_idx > 0:
+            clean_ts = data[start_idx:]
+        else:
+            clean_ts = data  # Fallback si ya era un TS limpio o el escaneo no arrojó coincidencias
+            
+        return Response(content=clean_ts, media_type="video/mp2t")
+    except Exception as e:
+        logger.error(f"Error en de-ofuscador de segmentos: {e}")
+        return Response(content=f"Error en de-ofuscador: {e}", status_code=500)
 
 # ==============================================================================
 # INICIO DEL SERVIDOR

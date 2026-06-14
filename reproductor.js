@@ -9,10 +9,7 @@ const Database = require('better-sqlite3');
 const db = new Database('data/playlist.db');
 db.pragma('journal_mode = WAL');
 
-// Archivo puente para comunicarse con el manager.py y el index.html
 const STATE_FILE = path.join(__dirname, 'configs', 'bot_state.json');
-
-// En Docker, esto DEBE ser false para que la librería use Xvfb y pase Cloudflare
 const MODO_INVISIBLE = false;
 
 global.videoCapturado = null;
@@ -54,7 +51,6 @@ async function esperarRespuesta(estado, preguntaTexto, datosExtra = {}) {
                     if (state.respuesta !== undefined) {
                         const resp = state.respuesta;
                         clearInterval(interval);
-                        // Limpiamos la respuesta para evitar bucles infinitos
                         const newState = { ...state, respuesta: undefined, waiting: false };
                         fs.writeFileSync(STATE_FILE, JSON.stringify(newState, null, 2));
                         resolve(resp);
@@ -66,75 +62,7 @@ async function esperarRespuesta(estado, preguntaTexto, datosExtra = {}) {
 }
 
 // ============================================================================
-// 2. SISTEMA DE PERFILADO Y CONTROL DE PESTAÑAS (TAB PINNING)
-// ============================================================================
-
-/**
- * Profiler de Rendimiento: Calcula la tolerancia de tiempo basado en CPU y Red
- */
-async function calcularCVD(page, dominio) {
-    console.log("⏱️  Iniciando Profiling de Rendimiento Dinámico...");
-    
-    // 1. Test de CPU Local (Node.js)
-    const startCPU = Date.now();
-    let num = 0;
-    for (let i = 0; i < 5000000; i++) {
-        num += Math.sqrt(i);
-    }
-    const cpuTime = Date.now() - startCPU; 
-    
-    // 2. Test de Latencia de Red (RTT al destino)
-    let rtt = 150; 
-    try {
-        const startNet = Date.now();
-        await page.goto(`https://${dominio}/robots.txt`, { waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {});
-        rtt = Date.now() - startNet;
-    } catch(e) {}
-
-    const baseCPU = 15;  
-    const baseRTT = 80;  
-
-    const cpuScore = Math.max(1.0, cpuTime / baseCPU);
-    const rttScore = Math.max(1.0, rtt / baseRTT);
-
-    let cvd = (cpuScore * 0.4) + (rttScore * 0.6);
-    cvd = Math.max(1.0, Math.min(4.5, cvd)); // Capped en 4.5x máximo
-
-    console.log(`📊 REPORTE DE PROFILING EN PRODUCCIÓN:`);
-    console.log(`   - CPU Local Score: ${cpuScore.toFixed(2)}x (Bucle en ${cpuTime}ms)`);
-    console.log(`   - Red RTT Score:   ${rttScore.toFixed(2)}x (${rtt}ms)`);
-    console.log(`   - Coeficiente de Velocidad Dinámico (CVD): ${cvd.toFixed(2)}x`);
-    
-    return cvd;
-}
-
-/**
- * Blindaje activo: Detecta y destruye pestañas de anuncios popups
- */
-function blindarNavegador(browser, mainPage) {
-    global.currentMainPage = mainPage;
-
-    mainPage.evaluateOnNewDocument(() => {
-        window.open = () => {
-            console.log("🚫 [Blindaje] Intento de ventana emergente bloqueado.");
-            return null;
-        };
-    });
-
-    browser.on('targetcreated', async (target) => {
-        if (target.type() === 'page') {
-            const page = await target.page();
-            if (page && page !== global.currentMainPage) {
-                const url = page.url();
-                console.log(`🚫 [Blindaje] Cerrando pestaña intrusa: ${url.substring(0, 45)}...`);
-                await page.close().catch(() => {});
-            }
-        }
-    });
-}
-
-// ============================================================================
-// 3. FUNCIONES DE CAPTCHA Y NAVEGACIÓN REPOSITORIO
+// 2. FUNCIONES DE SOPORTE, NAVEGACIÓN Y ABORTO (ASAP)
 // ============================================================================
 
 function cargarRecetaPorDominio(dominioBuscado) {
@@ -148,67 +76,162 @@ function cargarRecetaPorDominio(dominioBuscado) {
     return null;
 }
 
-/**
- * Bypass de Cloudflare escalado dinámicamente según CVD
- */
-async function esperarBypass(page, cvd = 1.0) {  
-    await new Promise(r => setTimeout(r, 1500));  
-    const maxIntentos = Math.round(20 * cvd);
-      
-    for (let i = 1; i <= maxIntentos; i++) {  
-        try {  
-            const url = page.url();  
-  
-            if (url === 'about:blank' || url.trim().length < 10) {  
-                await new Promise(r => setTimeout(r, 1000));  
-                continue;  
-            }  
-  
-            const titulo = await page.title().catch(() => '');  
-            let esDesafio = titulo.toLowerCase().includes('just a moment') || url.includes('challenges.cloudflare.com');  
-              
-            if (!esDesafio) {  
-                const contenido = await page.content();  
-                if (contenido.includes('cf-challenge') || contenido.includes('turnstile')) esDesafio = true;  
-            }  
-  
-            if (esDesafio) {  
-                console.log(`⏳ [${i}/${maxIntentos}] Cloudflare activo. Esperando renderizado...`);  
-                await new Promise(r => setTimeout(r, 3000));  
-            } else {  
-                console.log("✅ Bypass completado.");
-                return true;  
-            }  
-        } catch (e) {  
-            await new Promise(r => setTimeout(r, 1000));  
-        }  
-    }  
-    return false;  
+// ============================================================================
+// SISTEMA DE CONTROL DE PESTAÑAS (ANTI POPUPS DE PUBLICIDAD)
+// ============================================================================
+function blindarNavegador(browser, mainPage) {
+    global.currentMainPage = mainPage;
+
+    mainPage.evaluateOnNewDocument(() => {
+        window.open = () => {
+            console.log("🚫 [Blindaje] Ventana emergente bloqueada.");
+            return null;
+        };
+    });
+
+    browser.on('targetcreated', async (target) => {
+        if (target.type() === 'page') {
+            const page = await target.page();
+            if (page && page !== global.currentMainPage) {
+                await page.close().catch(() => {});
+            }
+        }
+    });
+}
+
+// ============================================================================
+// ESPERA DETERMINISTA DE IFRAMES EXTERNOS (LIBRE DE RESTRICCIONES CORS)
+// ============================================================================
+async function esperarIFramesExternos(page) {
+    console.log("⏳ Esperando que el reproductor inyecte el iframe de video externo...");
+    const start = Date.now();
+    
+    while (Date.now() - start < 8000) {
+        const frames = page.frames();
+        const tieneHostExterno = frames.some(f => {
+            try {
+                const urlStr = f.url();
+                return urlStr && !urlStr.includes('about:blank') && !urlStr.includes('cuevana') && !urlStr.includes('jkanime');
+            } catch(e) { return false; }
+        });
+
+        if (tieneHostExterno) {
+            console.log(`🎯 ¡Iframe del servidor de video detectado tras ${Date.now() - start}ms!`);
+            return true;
+        }
+        await new Promise(r => setTimeout(r, 400));
+    }
+    console.log("⚠️ No se detectaron iframes externos a tiempo. Continuando con análisis...");
+    return false;
+}
+
+// ============================================================================
+// DETECTOR Y SONDEADOR DE LATENCIA DEL CDN DE VIDEO REAL (PROTOCOL-LEVEL)
+// ============================================================================
+async function medirLatenciaHost(page) {
+    const frames = page.frames();
+    let targetHost = null;
+
+    for (const frame of frames) {
+        try {
+            const urlStr = frame.url();
+            if (urlStr && !urlStr.includes('about:blank') && !urlStr.includes('cuevana') && !urlStr.includes('jkanime')) {
+                // Buscamos las dimensiones físicas del iframe para asegurar que sea el reproductor
+                const frameElement = await frame.frameElement();
+                if (frameElement) {
+                    const rect = await frameElement.boundingBox();
+                    if (rect && rect.width > 250 && rect.height > 120) {
+                        targetHost = new URL(urlStr).hostname;
+                        break; 
+                    }
+                }
+            }
+        } catch (e) {}
+    }
+
+    if (!targetHost) {
+        console.log("⚠️ No se detectó un host externo explícito por tamaño. Usando fallback de 800ms.");
+        return 800;
+    }
+
+    console.log(`⚡ Servidor de video activo: [${targetHost}]. Midiendo latencia directa...`);
+    
+    const rttHost = await page.evaluate(async (host) => {
+        const start = Date.now();
+        try {
+            await fetch(`https://${host}/favicon.ico`, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+            return Date.now() - start;
+        } catch (e) {
+            try {
+                await fetch(`https://${host}`, { method: 'GET', mode: 'no-cors', cache: 'no-store' });
+                return Date.now() - start;
+            } catch (err) {
+                return 1000; 
+            }
+        }
+    }, targetHost);
+
+    console.log(`📡 Latencia directa con el servidor de video [${targetHost}]: ${rttHost}ms`);
+    return rttHost;
 }
 
 /**
- * Navegación reactiva (Event-Driven) que detiene descargas innecesarias
+ * Bypass de Cloudflare
  */
-async function navegarYAbortar(page, url, selector, esPaginaCritica = false) {  
-    try {  
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });  
-          
-        if (esPaginaCritica) {  
-            await page.waitForSelector(selector, { timeout: 12000 });  
-            return;  
-        }  
+async function esperarBypass(page, maxIntentos = 30) {
+    console.log("🛡️ Verificando estado del bypass...");
+    await new Promise(r => setTimeout(r, 1500));
+    for (let i = 1; i <= maxIntentos; i++) {
+        try {
+            const url = page.url();
+            if (url === 'about:blank' || url.trim().length < 10) {
+                await new Promise(r => setTimeout(r, 1000));
+                continue;
+            }
 
-        const currentUrl = page.url();  
-        const titulo = await page.title().catch(() => '');  
-        const esCF = titulo.toLowerCase().includes('just a moment') || currentUrl.includes('challenges.cloudflare.com');  
-          
-        if (!esCF) {  
-            await page.waitForSelector(selector, { timeout: 10000 });  
-            await page.evaluate(() => window.stop()).catch(() => {});  
-            console.log("🛑 [ASAP] Carga abortada tras detección de selector crítico.");  
-        }  
-    } catch (e) {}  
-}  
+            const titulo = await page.title().catch(() => '');
+            let esDesafio = titulo.toLowerCase().includes('just a moment') ||
+                            url.includes('challenges.cloudflare.com') ||
+                            titulo.toLowerCase().includes('verificando que eres humano');
+            if (!esDesafio) {
+                const contenido = await page.content();
+                if (contenido.includes('cf-challenge') || contenido.includes('turnstile')) esDesafio = true;
+            }
+            if (esDesafio) {
+                console.log(`⏳ [${i}/${maxIntentos}] Resolviendo escudo...`);
+                await new Promise(r => setTimeout(r, 3000));
+            } else {
+                console.log("✅ Bypass completado.");
+                return true;
+            }
+        } catch (e) { await new Promise(r => setTimeout(r, 1000)); }
+    }
+    return false;
+}
+
+/**
+ * Función asíncrona inteligente para realizar la carga ASAP y abortar red basura
+ */
+async function navegarYAbortar(page, url, selector, esPaginaCritica = false) {
+    try {
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        
+        if (esPaginaCritica) {
+            await page.waitForSelector(selector, { timeout: 12000 });
+            return;
+        }
+
+        const currentUrl = page.url();
+        const titulo = await page.title().catch(() => '');
+        const esCF = titulo.toLowerCase().includes('just a moment') || currentUrl.includes('challenges.cloudflare.com');
+        
+        if (!esCF) {
+            await page.waitForSelector(selector, { timeout: 10000 });
+            await page.evaluate(() => window.stop()).catch(() => {});
+            console.log("🛑 [ASAP] Carga de página abortada para ahorrar recursos.");
+        }
+    } catch (e) {}
+}
 
 async function clickInteligente(page, selector) {
     try {
@@ -229,73 +252,69 @@ function generarUrlEpisodio(showUrl, capitulo, receta) {
 }
 
 // ============================================================================
-// 4. EXTRACCIÓN NINJA ADAPTATIVA (Sandbox Adaptativo)
+// EXTRACCIÓN SANDBOX CON FORMULA DE CUELLO DE BOTELLA FÍSICO
 // ============================================================================
-async function activarVideoSandbox(page, cvd = 1.0) {  
-    console.log("\n🎬 Analizando reproducción adaptativa...");  
-    const playSelectors = ['.vjs-big-play-button', '.play-button', '.btn-play', '[class*="play"]', 'video', '.video-play'];  
-    const startTime = Date.now();  
-      
-    // En lugar de una espera progresiva rígida, el intervalo de clic se escala con el CVD
-    let baseWait = Math.round(1500 * cvd);  
-      
-    while (Date.now() - startTime < 60000) {  
-        if (global.videoCapturado) return true;  
-  
-        try {  
-            // Clics lógicos en el centro del DOM para romper overlays publicitarios
-            await page.evaluate(() => {  
-                const x = window.innerWidth / 2;  
-                const y = window.innerHeight / 2;  
-                document.elementFromPoint(x, y)?.click();  
-            });  
-  
-            const estadoBuffer = await page.evaluate(() => {  
-                const v = document.querySelector('video');  
-                return v ? { ready: v.readyState >= 1, playing: !v.paused } : { ready: false, playing: false };  
-            });  
-  
-            const frames = page.frames();  
-            for (const frame of frames) {  
-                try {  
-                    if (frame.url().includes('about:blank')) continue;  
+async function activarVideoSandbox(page, rttHost, cpuScore) {
+    console.log("\n🎬 Iniciando Extracción Sandbox...");
+    const playSelectors = ['.vjs-big-play-button', '.play-button', '.btn-play', '[class*="play"]', 'video', '.video-play', '.jw-icon-display', '.plyr__control--overlaid'];
+    const startTime = Date.now();
+    
+    // 📐 FÓRMULA DE CUELLO DE BOTELLA FÍSICO (W0 + FACTOR EXPONENCIAL)
+    const factorExponencial = 1.15 + (cpuScore * 0.05); // Escalado dinámico por hardware
+    const baseDelay = rttHost ? Math.max(2500, Math.min(8000, 2500 + (rttHost * cpuScore))) : 2000;
+    
+    let k = 0; 
+    
+    while (Date.now() - startTime < 60000) { 
+        if (global.videoCapturado) return true;
+        try {
+            await page.evaluate(() => {
+                document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2)?.click();
+            });
+
+            const estadoBuffer = await page.evaluate(() => {
+                const v = document.querySelector('video');
+                return v ? { ready: v.readyState >= 1, playing: !v.paused } : { ready: false, playing: false };
+            });
+
+            const frames = page.frames();
+            for (const frame of frames) {
+                try {
+                    if (frame.url().includes('about:blank')) continue;
                     
                     const src = await frame.evaluate(() => {
-                        const vid = document.querySelector('video');
-                        return vid ? vid.src : null;
+                        const vid = document.querySelector('video'); return vid ? vid.src : null;
                     });
                     if (src && (src.includes('.m3u8') || src.includes('.mp4')) && !src.startsWith('blob:')) {
                         global.videoCapturado = src;
                         return true;
                     }
+                    
+                    for (const selector of playSelectors) {
+                        const el = await frame.$(selector);
+                        if (el) await frame.evaluate((sel) => { document.querySelector(sel)?.click(); }, selector);
+                    }
+                } catch (e) {}
+            }
 
-                    for (const selector of playSelectors) {  
-                        const el = await frame.$(selector);  
-                        if (el) {  
-                            await frame.evaluate((sel) => {  
-                                document.querySelector(sel)?.click();  
-                            }, selector);  
-                        }  
-                    }  
-                } catch (e) {}  
-            }  
-  
-            if (estadoBuffer.ready || global.videoCapturado) {  
-                console.log("⚡ ¡Buffer o Stream detectado! Finalizando de inmediato...");  
-                break; 
-            } else {  
-                console.log(`⏳ Buffer vacío. Espera dinámica de reintento: ${baseWait / 1000}s...`);  
-                await new Promise(r => setTimeout(r, baseWait));  
-                baseWait = Math.min(baseWait + 1000, 8000);  
-            }  
-  
-        } catch (e) {}  
-    }  
-    return !!global.videoCapturado;  
+            if (estadoBuffer.ready || global.videoCapturado) {
+                console.log("⚡ ¡Video o buffer detectado! Extracción completada.");
+                break;
+            } else {
+                let waitTime = rttHost ? Math.round(baseDelay * Math.pow(factorExponencial, k)) : 2000;
+                waitTime = Math.min(10000, waitTime); 
+
+                console.log(`⏳ Ciclo #${k} - Espera: ${waitTime}ms (factor: ${factorExponencial.toFixed(2)})`);
+                await new Promise(r => setTimeout(r, waitTime));
+                k++;
+            }
+        } catch (e) {}
+    }
+    return !!global.videoCapturado;
 }
 
 // ============================================================================
-// 5. ORQUESTADOR PRINCIPAL
+// 3. ORQUESTADOR PRINCIPAL
 // ============================================================================
 async function main() {
     const args = process.argv.slice(2);
@@ -308,68 +327,53 @@ async function main() {
         process.exit(1);
     }
 
+    // Profiling de CPU ultra-rápido local para escalar el factor exponencial
+    const startCPU = Date.now();
+    for (let i = 0; i < 5000000; i++) { Math.sqrt(i); }
+    const cpuTime = Date.now() - startCPU; 
+    const cpuScore = Math.max(1.0, cpuTime / 15);
+
     console.log("======================================================");
     console.log(`🤖 BOT INTERACTIVO | Buscando: ${ARG_KEYWORD} en ${ARG_DOMINIO}`);
-    console.log(`🖥️ Modo Invisible: ${MODO_INVISIBLE}`);
+    console.log(`🖥️  Hardware Profile Score: CPU ${cpuScore.toFixed(2)}x (${cpuTime}ms)`);
     console.log("======================================================");
 
-    // Conexión con argumentos optimizados
     const { browser, page } = await connect({
         headless: MODO_INVISIBLE,
         args: [
             "--start-maximized", 
             "--no-sandbox", 
             "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",         // Requerido en Docker para evitar fallas de memoria
-            "--disable-accelerated-2d-canvas", // Evita renderizado 2D pesado
-            "--disable-gpu"                    // Desactiva la GPU para liberar el Celeron
+            "--disable-dev-shm-usage",         
+            "--disable-accelerated-2d-canvas", 
+            "--disable-gpu"                    
         ],
         turnstile: true,
         connectOption: { defaultViewport: null }
     });
 
-    // Activar Blindaje de Navegador para neutralizar Popups agresivos
     blindarNavegador(browser, page);
-
-    // CONFIGURACIÓN CRÍTICA PARA DOCKER Y SITIOS LENTOS
     page.setDefaultNavigationTimeout(90000); 
 
-    // INTERCEPCIÓN INTELIGENTE DE RED (Ahorra un ~90% de ancho de banda y renderizado)
     await page.setRequestInterception(true);
     let peticionesBloqueadas = 0;
     page.on('request', (req) => {
         const type = req.resourceType();
         const url = req.url().toLowerCase();
         
-        // 1. Regla de Oro: Pasar Cloudflare y Turnstile siempre
-        if (
-            url.includes('cloudflare') || 
-            url.includes('challenges') || 
-            url.includes('captcha') || 
-            url.includes('turnstile')
-        ) {
+        if (url.includes('cloudflare') || url.includes('challenges') || url.includes('captcha') || url.includes('turnstile')) {
             return req.continue();
         }
-
-        // 2. Bloquear elementos pesados e inútiles para la extracción
         if (['image', 'font', 'media'].includes(type)) {
             peticionesBloqueadas++;
             return req.abort();
         }
-
-        // 3. Bloquear trackers y publicidad que devoran ciclos de CPU del procesador
-        const esAnuncioOTracker = [
-            '1xbet', 'popads', 'doubleclick', 'google-analytics', 'googletagmanager', 'gtag',
-            'onclickads', 'facebook', 'exoclick', 'juicyads', 
-            'a-ads', 'coinad', 'histats', 'adskeeper', 'mgid',
-            'analytics', 'telemetry', 'tracker', 'anisabi.com'
-        ].some(keyword => url.includes(keyword));
+        const esAnuncioOTracker = ['1xbet', 'popads', 'doubleclick', 'google-analytics', 'googletagmanager', 'gtag', 'onclickads', 'facebook', 'exoclick', 'juicyads', 'a-ads', 'coinad', 'histats', 'adskeeper', 'mgid', 'analytics', 'telemetry', 'tracker', 'anisabi.com'].some(keyword => url.includes(keyword));
 
         if (esAnuncioOTracker && ['script', 'xhr', 'fetch', 'other'].includes(type)) {
             peticionesBloqueadas++;
             return req.abort();
         }
-
         req.continue();
     });
 
@@ -387,9 +391,6 @@ async function main() {
         const receta = cargarRecetaPorDominio(ARG_DOMINIO);
         if (!receta) throw new Error(`No se encontró receta para ${ARG_DOMINIO}`);
 
-        // CALCULO DEL CVD: Medición en caliente de CPU y Red
-        const cvd = await calcularCVD(page, receta.dominio);
-
         // --- PASO 1: BÚSQUEDA ---
         let searchUrl = null;
         if (ARG_DOMINIO.includes('jkanime')) {
@@ -400,12 +401,12 @@ async function main() {
 
         if (searchUrl) {
             console.log(`📡 Navegando directamente a la búsqueda: ${searchUrl}`);
-            await navegarYAbortar(page, searchUrl, 'a', false);
+            // Configurado en 'true' (Página Crítica) para evitar que window.stop() cancele la API de resultados
+            await navegarYAbortar(page, searchUrl, 'a', true); 
         } else {
-            // Fallback genérico para otros sitios si no hay URL estructurada
             const initSelector = receta.searchSelector || 'input[type="search"], input[name="q"], #search';
             await navegarYAbortar(page, `https://${receta.dominio}`, initSelector, false);
-            await esperarBypass(page, cvd);
+            await esperarBypass(page);
 
             const sSelector = receta.searchSelector || 'input[type="search"], input[name="q"], #search';
             await page.waitForSelector(sSelector, { timeout: 15000 });
@@ -414,44 +415,40 @@ async function main() {
             }, ARG_KEYWORD);
 
             const subSelector = receta.submitSelector || 'button[type="submit"], input[type="submit"], .search-submit';
-            try {
-                await page.click(subSelector);
-            } catch (e) {
-                await page.$eval(sSelector, (el) => el.closest('form')?.submit());
-            }
+            try { 
+                await page.click(subSelector); 
+            } catch (e) { 
+                await page.$eval(sSelector, (el) => el.closest('form')?.submit()); 
+            }  
         }
-        await esperarBypass(page, cvd);
+        await esperarBypass(page);
 
-        // Extraer resultados del DOM reactivamente (Event-Driven)
-        console.log("⏳ Buscando resultados en el DOM...");
-        const maxWaitTime = Math.round(15000 * cvd);
-        
-        const enlaces = await page.waitForFunction((kw) => {
-            const normalizar = (texto) => {
-                return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-            };
-            const kwNormalizado = normalizar(kw);
-            const targets = Array.from(document.querySelectorAll('a'))
-                .map(a => ({ href: a.href, text: a.innerText.trim() }))
-                .filter(e => normalizar(e.text).includes(kwNormalizado) && e.href.length > 10);
-            
-            return targets.length > 0 ? targets : null;
-        }, { timeout: maxWaitTime, polling: 300 }, ARG_KEYWORD)
-        .then(async (handle) => await handle.jsonValue())
-        .catch(() => []);
+        // Extraer resultados de la búsqueda con reintentos y normalización de acentos
+        console.log("⏳ Esperando que se rendericen los resultados en el DOM...");
+        let enlaces = [];
+        for (let i = 0; i < 5; i++) {
+            enlaces = await page.evaluate((kw) => {
+                const normalizar = (texto) => texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+                const kwNormalizado = normalizar(kw);
+                return Array.from(document.querySelectorAll('a'))
+                    .map(a => ({ href: a.href, text: a.innerText.trim() }))
+                    .filter(e => normalizar(e.text).includes(kwNormalizado) && e.href.length > 10);
+            }, ARG_KEYWORD);
+
+            if (enlaces.length > 0) break;
+            await new Promise(r => setTimeout(r, 2000));
+        }
         
         if (enlaces.length === 0) throw new Error("No se encontraron resultados en la página.");
 
-        // Interacción Panel: Seleccionar Show
         const seleccionIdx = parseInt(await esperarRespuesta('SELECT_SHOW', "Selecciona el show", { resultados: enlaces })) - 1;
         const show = enlaces[seleccionIdx] || enlaces[0];
         const urlBaseFinal = show.href;
 
         // --- PASO 2: FICHA DEL SHOW (PÁGINA CRÍTICA) ---
         await navegarYAbortar(page, urlBaseFinal, 'body', true);
-        await esperarBypass(page, cvd);
+        await esperarBypass(page);
 
-        // Interacción Panel: Seleccionar Tipo
         const tipo = await esperarRespuesta('SELECT_TYPE', "¿Serie o Película?", { titulo: show.text });
         const clasificacionFinal = (tipo === 'P') ? 'PELICULA_OVA' : 'SERIE';
 
@@ -470,32 +467,41 @@ async function main() {
             targetUrl = generarUrlEpisodio(urlBaseFinal, capituloElegido, receta);
         }
 
-        // --- PASO 3: CAPTURA FINAL (PÁGINA CRÍTICA) ---
-        console.log(`➡️ Navegando al video final: ${targetUrl}`);
+        // --- PASO 3: CAPTURA FINAL (PÁGINA DEL REPRODUCTOR) ---
+        console.log(`➡️  Navegando al video final: ${targetUrl}`);
         const selectorVideo = '.video-play, #play-button, video, .vjs-big-play-button';
         await navegarYAbortar(page, targetUrl, selectorVideo, true);
-        await esperarBypass(page, cvd);
+        await esperarBypass(page);
 
-        // Intentar click inicial en botones visibles
+        // 1. Ejecutar clicks iniciales primero para forzar la inyección de iframes en el DOM
         const diag = await page.evaluate(() => ({
             hasPlay: document.querySelector('.video-play') !== null,
             servers: Array.from(document.querySelectorAll('li[role="presentation"], .server-item')).map(el => el.innerText.trim())
         }));
 
-        if (diag.hasPlay) await clickInteligente(page, '.video-play');
+        if (diag.hasPlay) {
+            console.log("👆 Haciendo click inicial para forzar inyección...");
+            await clickInteligente(page, '.video-play');
+        }
         if (diag.servers.length > 0) {
+            console.log("👆 Seleccionando servidor primario...");
             await page.evaluate(() => {
                 document.querySelector('li[role="presentation"], .server-item')?.click();
             });
-            await new Promise(r => setTimeout(r, 4000));
+            await new Promise(r => setTimeout(r, 1500)); 
         }
 
-        // Ejecutar el Sandbox agresivo adaptativo
-        await activarVideoSandbox(page, cvd);
+        // 2. Esperar que el DOM inserte el iframe externo tras los clicks
+        await esperarIFramesExternos(page);
+        
+        // 3. Medir latencia directamente con el host externo inyectado
+        const rttHost = await medirLatenciaHost(page);
+
+        // Ejecutar extracción con la latencia dedicada del host de video y perfil de hardware
+        await activarVideoSandbox(page, rttHost, cpuScore);
 
         if (global.videoCapturado) {
             console.log(`\n🎉 ¡ÉXITO! Enlace capturado: ${global.videoCapturado}`);
-            console.log(`🧹 Rendimiento: Se bloquearon ${peticionesBloqueadas} recursos basura en esta corrida.`);
             const insert = db.prepare('INSERT INTO contenidos (titulo, clasificacion, episodio, url_final, url_base, dominio, hora_programada, reproducido) VALUES (?, ?, ?, ?, ?, ?, ?, 0)');
             insert.run(ARG_KEYWORD, clasificacionFinal, capituloElegido, global.videoCapturado, urlBaseFinal, ARG_DOMINIO, ARG_HORA);
             await enviarEstado('IDLE', { message: '¡Contenido guardado con éxito!' });

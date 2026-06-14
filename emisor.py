@@ -3,6 +3,7 @@ import os
 import time
 import sqlite3
 import logging
+import urllib.parse
 from threading import Thread, Event
 from datetime import datetime
 
@@ -94,7 +95,7 @@ class PlaylistDB:
         self.conn.commit()
 
 # ==============================================================================
-# MÓDULO DE DESCARGA
+# MÓDULO DE DESCARGA (CON DIRECCIONAMIENTO A PROXY LOCAL)
 # ==============================================================================
 class Downloader:
     def __init__(self):
@@ -107,17 +108,23 @@ class Downloader:
         if ".m3u8" in url:
             logger.info(f"[BG] Registrando marcador HLS para ID {video_id}")
             
-            # 📡 DETERMINACIÓN DINÁMICA DEL REFERER BASADO EN LA DB
+            # Determinamos el referer dinámico preciso usando url_base
             try:
-                dominio = video_data['dominio'] if video_data['dominio'] else 'jkanime.net'
+                referer = video_data['url_base'] if video_data['url_base'] else f"https://{video_data['dominio']}/"
             except Exception:
-                dominio = 'jkanime.net'
+                referer = "https://jkanime.net/"
             
-            referer = f"https://{dominio}/"
-            logger.info(f"[BG] Configurando Referer para el reproductor: {referer}")
+            # 📡 Si el video proviene de Cuevana o un CDN de Filelions, lo procesamos por nuestro de-ofuscador local (FastAPI)
+            if "cuevana" in referer or "tiktok" in url or "shopping" in url or "image" in url:
+                proxied_url = f"http://localhost:9001/proxy/manifest.m3u8?url={urllib.parse.quote(url)}&referer={urllib.parse.quote(referer)}"
+                logger.info(f"[BG] Re-enrutando HLS a través de proxy local de-ofuscador...")
+            else:
+                proxied_url = url
+                
+            logger.info(f"[BG] Configurando Referer para el reproductor HLS: {referer}")
 
             with open(f"{self.almacen}/next_{video_id}.url", "w") as f:
-                f.write(f"{url}\n{referer}")
+                f.write(f"{proxied_url}\n{referer}")
             return True
 
         logger.info(f"[BG] Descargando MP4 para ID {video_id} vía yt-dlp...")
@@ -137,7 +144,7 @@ class Downloader:
             return False
 
 # ==============================================================================
-# MÓDULO DE TRANSMISIÓN
+# MÓDULO DE TRANSMISIÓN (CON VERBOSE LOGS DE ERROR EN CONSOLA)
 # ==============================================================================
 class Streamer:
     def __init__(self):
@@ -161,7 +168,7 @@ class Streamer:
                 comando = [
                     "ffmpeg", "-y", "-re",
                     "-thread_queue_size", "2048",
-                    "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
+                    "-protocol_whitelist", "file,http,https,tcp,tls,crypto,data",
                     "-fflags", "+genpts+discardcorrupt",
                     "-referer", referer, "-user_agent", Config.USER_AGENT,
                     "-i", stream_url,
@@ -171,7 +178,7 @@ class Streamer:
                 comando = [
                     "ffmpeg", "-y", "-re",
                     "-thread_queue_size", "2048",
-                    "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
+                    "-protocol_whitelist", "file,http,https,tcp,tls,crypto,data",
                     "-fflags", "+genpts+discardcorrupt",
                     "-referer", referer, "-user_agent", Config.USER_AGENT,
                     "-i", stream_url, "-vf", Config.VIDEO_SCALE,
@@ -202,13 +209,24 @@ class Streamer:
 
     def _ejecutar_ffmpeg(self, comando, path_to_clean):
         try:
-            with open(Config.FFMPEG_LOG, "a") as log:
-                subprocess.run(comando, stdout=subprocess.DEVNULL, stderr=log, check=True)
+            # Capturamos stderr para poder volcarlo en Docker compose logs en caso de falla
+            result = subprocess.run(comando, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            
+            if result.returncode != 0:
+                logger.error(f"❌ FFmpeg falló con código {result.returncode}.")
+                logger.error(f"🔍 DETALLES DE ERROR FFMPEG (STDOUT/STDERR):\n{result.stderr}")
+                
+                # También lo guardamos en el archivo log histórico de errores
+                with open(Config.FFMPEG_LOG, "a") as log:
+                    log.write(f"\n--- ERROR FFmpeg (Code {result.returncode}) {datetime.now()} ---\n")
+                    log.write(result.stderr)
+                return False
+                
             if os.path.exists(path_to_clean):
                 os.remove(path_to_clean)
             return True
-        except subprocess.CalledProcessError as e:
-            logger.error(f"❌ FFmpeg falló con código {e.returncode}. Revisa {Config.FFMPEG_LOG}")
+        except Exception as e:
+            logger.error(f"❌ Error ejecutando subprocess FFmpeg: {e}")
             return False
 
 # ==============================================================================
@@ -253,8 +271,8 @@ class TVExecutor:
                not os.path.exists(f"{Config.ALMACEN}/next_{actual['id']}.url"):
                 self.downloader.descargar(actual)
 
-            duracion = actual.get('duracion', 1200) if isinstance(actual, dict) else 1200
-            Thread(target=self.monitor_progress, args=(actual['id'], duracion), daemon=True).start()
+            duration = actual.get('duracion', 1200) if isinstance(actual, dict) else 1200
+            Thread(target=self.monitor_progress, args=(actual['id'], duration), daemon=True).start()
 
             if self.streamer.emitir(actual):
                 logger.info(f"✅ Finalizado: {actual['titulo']}")
