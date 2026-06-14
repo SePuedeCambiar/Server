@@ -66,23 +66,51 @@ async function esperarRespuesta(estado, preguntaTexto, datosExtra = {}) {
 }
 
 // ============================================================================
-// 2. FUNCIONES DE SOPORTE, NAVEGACIÓN Y ABORTO (ASAP)
+// 2. SISTEMA DE PERFILADO Y CONTROL DE PESTAÑAS (TAB PINNING)
 // ============================================================================
 
-function cargarRecetaPorDominio(dominioBuscado) {
-    const configsDir = path.join(__dirname, 'configs');
-    if (!fs.existsSync(configsDir)) return null;
-    const archivos = fs.readdirSync(configsDir).filter(f => f.endsWith('_receta.json'));
-    for (const archivo of archivos) {
-        const receta = JSON.parse(fs.readFileSync(path.join(configsDir, archivo), 'utf8'));
-        if (receta.dominio === dominioBuscado) return receta;
+/**
+ * Profiler de Rendimiento: Calcula la tolerancia de tiempo basado en CPU y Red
+ */
+async function calcularCVD(page, dominio) {
+    console.log("⏱️  Iniciando Profiling de Rendimiento Dinámico...");
+    
+    // 1. Test de CPU Local (Node.js)
+    const startCPU = Date.now();
+    let num = 0;
+    for (let i = 0; i < 5000000; i++) {
+        num += Math.sqrt(i);
     }
-    return null;
+    const cpuTime = Date.now() - startCPU; 
+    
+    // 2. Test de Latencia de Red (RTT al destino)
+    let rtt = 150; 
+    try {
+        const startNet = Date.now();
+        await page.goto(`https://${dominio}/robots.txt`, { waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {});
+        rtt = Date.now() - startNet;
+    } catch(e) {}
+
+    const baseCPU = 15;  
+    const baseRTT = 80;  
+
+    const cpuScore = Math.max(1.0, cpuTime / baseCPU);
+    const rttScore = Math.max(1.0, rtt / baseRTT);
+
+    let cvd = (cpuScore * 0.4) + (rttScore * 0.6);
+    cvd = Math.max(1.0, Math.min(4.5, cvd)); // Capped en 4.5x máximo
+
+    console.log(`📊 REPORTE DE PROFILING EN PRODUCCIÓN:`);
+    console.log(`   - CPU Local Score: ${cpuScore.toFixed(2)}x (Bucle en ${cpuTime}ms)`);
+    console.log(`   - Red RTT Score:   ${rttScore.toFixed(2)}x (${rtt}ms)`);
+    console.log(`   - Coeficiente de Velocidad Dinámico (CVD): ${cvd.toFixed(2)}x`);
+    
+    return cvd;
 }
 
-// ============================================================================
-// SISTEMA DE CONTROL DE PESTAÑAS (TAB PINNING - ANTI POPUPS)
-// ============================================================================
+/**
+ * Blindaje activo: Detecta y destruye pestañas de anuncios popups
+ */
 function blindarNavegador(browser, mainPage) {
     global.currentMainPage = mainPage;
 
@@ -105,71 +133,82 @@ function blindarNavegador(browser, mainPage) {
     });
 }
 
-/**
- * Bypass de Cloudflare optimizado sin tiempos muertos innecesarios
- */
-async function esperarBypass(page, maxIntentos = 30) {
-    console.log("🛡️ Verificando estado del bypass...");
-    await new Promise(r => setTimeout(r, 1500)); // Bajamos de 4s a 1.5s para ahorrar tiempo muerto
-    for (let i = 1; i <= maxIntentos; i++) {
-        try {
-            const url = page.url();
-            
-            // Si la URL está vacía por retraso de red, esperamos un segundo
-            if (url === 'about:blank' || url.trim().length < 10) {
-                await new Promise(r => setTimeout(r, 1000));
-                continue;
-            }
+// ============================================================================
+// 3. FUNCIONES DE CAPTCHA Y NAVEGACIÓN REPOSITORIO
+// ============================================================================
 
-            const titulo = await page.title().catch(() => '');
-            let esDesafio = titulo.toLowerCase().includes('just a moment') ||
-                            url.includes('challenges.cloudflare.com') ||
-                            titulo.toLowerCase().includes('verificando que eres humano');
-            if (!esDesafio) {
-                const contenido = await page.content();
-                if (contenido.includes('cf-challenge') || contenido.includes('turnstile')) esDesafio = true;
-            }
-            if (esDesafio) {
-                console.log(`⏳ [${i}/${maxIntentos}] Resolviendo escudo...`);
-                await new Promise(r => setTimeout(r, 3000));
-            } else {
+function cargarRecetaPorDominio(dominioBuscado) {
+    const configsDir = path.join(__dirname, 'configs');
+    if (!fs.existsSync(configsDir)) return null;
+    const archivos = fs.readdirSync(configsDir).filter(f => f.endsWith('_receta.json'));
+    for (const archivo of archivos) {
+        const receta = JSON.parse(fs.readFileSync(path.join(configsDir, archivo), 'utf8'));
+        if (receta.dominio === dominioBuscado) return receta;
+    }
+    return null;
+}
+
+/**
+ * Bypass de Cloudflare escalado dinámicamente según CVD
+ */
+async function esperarBypass(page, cvd = 1.0) {  
+    await new Promise(r => setTimeout(r, 1500));  
+    const maxIntentos = Math.round(20 * cvd);
+      
+    for (let i = 1; i <= maxIntentos; i++) {  
+        try {  
+            const url = page.url();  
+  
+            if (url === 'about:blank' || url.trim().length < 10) {  
+                await new Promise(r => setTimeout(r, 1000));  
+                continue;  
+            }  
+  
+            const titulo = await page.title().catch(() => '');  
+            let esDesafio = titulo.toLowerCase().includes('just a moment') || url.includes('challenges.cloudflare.com');  
+              
+            if (!esDesafio) {  
+                const contenido = await page.content();  
+                if (contenido.includes('cf-challenge') || contenido.includes('turnstile')) esDesafio = true;  
+            }  
+  
+            if (esDesafio) {  
+                console.log(`⏳ [${i}/${maxIntentos}] Cloudflare activo. Esperando renderizado...`);  
+                await new Promise(r => setTimeout(r, 3000));  
+            } else {  
                 console.log("✅ Bypass completado.");
-                return true;
-            }
-        } catch (e) {
-            await new Promise(r => setTimeout(r, 1000));
-        }
-    }
-    return false;
+                return true;  
+            }  
+        } catch (e) {  
+            await new Promise(r => setTimeout(r, 1000));  
+        }  
+    }  
+    return false;  
 }
 
 /**
- * Función asíncrona inteligente para realizar la carga ASAP y abortar red basura
+ * Navegación reactiva (Event-Driven) que detiene descargas innecesarias
  */
-async function navegarYAbortar(page, url, selector, esPaginaCritica = false) {
-    try {
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
-        
-        // Fichas y Episodios necesitan que corra Javascript nativo (no las abortamos con window.stop)
-        if (esPaginaCritica) {
-            await page.waitForSelector(selector, { timeout: 12000 });
-            return;
-        }
+async function navegarYAbortar(page, url, selector, esPaginaCritica = false) {  
+    try {  
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });  
+          
+        if (esPaginaCritica) {  
+            await page.waitForSelector(selector, { timeout: 12000 });  
+            return;  
+        }  
 
-        // Búsquedas normales las abortamos inmediatamente si no hay un captcha en pantalla
-        const currentUrl = page.url();
-        const titulo = await page.title().catch(() => '');
-        const esCF = titulo.toLowerCase().includes('just a moment') || currentUrl.includes('challenges.cloudflare.com');
-        
-        if (!esCF) {
-            await page.waitForSelector(selector, { timeout: 10000 });
-            await page.evaluate(() => window.stop()).catch(() => {});
-            console.log("🛑 [ASAP] Carga de página abortada para ahorrar recursos.");
-        }
-    } catch (e) {
-        // Continuar silenciosamente ante timeouts lentos
-    }
-}
+        const currentUrl = page.url();  
+        const titulo = await page.title().catch(() => '');  
+        const esCF = titulo.toLowerCase().includes('just a moment') || currentUrl.includes('challenges.cloudflare.com');  
+          
+        if (!esCF) {  
+            await page.waitForSelector(selector, { timeout: 10000 });  
+            await page.evaluate(() => window.stop()).catch(() => {});  
+            console.log("🛑 [ASAP] Carga abortada tras detección de selector crítico.");  
+        }  
+    } catch (e) {}  
+}  
 
 async function clickInteligente(page, selector) {
     try {
@@ -190,36 +229,37 @@ function generarUrlEpisodio(showUrl, capitulo, receta) {
 }
 
 // ============================================================================
-// FUNCIÓN NINJA: CAPTURA DE STREAM ADAPTATIVA (DEL BENCHMARK)
+// 4. EXTRACCIÓN NINJA ADAPTATIVA (Sandbox Adaptativo)
 // ============================================================================
-async function activarVideoSandbox(page) {
-    console.log("\n🎬 Buscando reproductor y forzando ejecución ninja...");
-    const playSelectors = ['.vjs-big-play-button', '.play-button', '.btn-play', '[class*="play"]', 'video', '.video-play', '.jw-icon-display', '.plyr__control--overlaid'];
-    const startTime = Date.now();
-    let currentWait = 2000;
+async function activarVideoSandbox(page, cvd = 1.0) {  
+    console.log("\n🎬 Analizando reproducción adaptativa...");  
+    const playSelectors = ['.vjs-big-play-button', '.play-button', '.btn-play', '[class*="play"]', 'video', '.video-play'];  
+    const startTime = Date.now();  
       
-    while (Date.now() - startTime < 60000) { 
-        if (global.videoCapturado) return true;
-        
-        try {
-            // Clic programático para romper overlays transparentes
-            await page.evaluate(() => {
-                const x = window.innerWidth / 2;
-                const y = window.innerHeight / 2;
-                document.elementFromPoint(x, y)?.click();
-            });
-
-            const estadoBuffer = await page.evaluate(() => {
-                const v = document.querySelector('video');
-                return v ? { ready: v.readyState >= 1, playing: !v.paused } : { ready: false, playing: false };
-            });
-
-            const frames = page.frames();
-            for (const frame of frames) {
-                try {
-                    if (frame.url().includes('about:blank')) continue;
+    // En lugar de una espera progresiva rígida, el intervalo de clic se escala con el CVD
+    let baseWait = Math.round(1500 * cvd);  
+      
+    while (Date.now() - startTime < 60000) {  
+        if (global.videoCapturado) return true;  
+  
+        try {  
+            // Clics lógicos en el centro del DOM para romper overlays publicitarios
+            await page.evaluate(() => {  
+                const x = window.innerWidth / 2;  
+                const y = window.innerHeight / 2;  
+                document.elementFromPoint(x, y)?.click();  
+            });  
+  
+            const estadoBuffer = await page.evaluate(() => {  
+                const v = document.querySelector('video');  
+                return v ? { ready: v.readyState >= 1, playing: !v.paused } : { ready: false, playing: false };  
+            });  
+  
+            const frames = page.frames();  
+            for (const frame of frames) {  
+                try {  
+                    if (frame.url().includes('about:blank')) continue;  
                     
-                    // Extraer src de manera directa si ya existe
                     const src = await frame.evaluate(() => {
                         const vid = document.querySelector('video');
                         return vid ? vid.src : null;
@@ -229,33 +269,33 @@ async function activarVideoSandbox(page) {
                         return true;
                     }
 
-                    // Forzar click en play selectors dentro del iframe
-                    for (const selector of playSelectors) {
-                        const el = await frame.$(selector);
-                        if (el) {
-                            await frame.evaluate((sel) => {
-                                document.querySelector(sel)?.click();
-                            }, selector);
-                        }
-                    }
-                } catch (e) {}
-            }
-
-            if (estadoBuffer.ready) {
-                console.log("⚡ ¡Buffer del reproductor detectado! Sincronizando...");
-                await new Promise(r => setTimeout(r, 1500));
-            } else {
-                console.log(`⏳ Buffer vacío. Reintentando en ${currentWait / 1000}s...`);
-                await new Promise(r => setTimeout(r, currentWait));
-                currentWait = Math.min(currentWait + 1500, 8000); // Backoff progresivo
-            }
-        } catch(e) {}
-    }
-    return !!global.videoCapturado;
+                    for (const selector of playSelectors) {  
+                        const el = await frame.$(selector);  
+                        if (el) {  
+                            await frame.evaluate((sel) => {  
+                                document.querySelector(sel)?.click();  
+                            }, selector);  
+                        }  
+                    }  
+                } catch (e) {}  
+            }  
+  
+            if (estadoBuffer.ready || global.videoCapturado) {  
+                console.log("⚡ ¡Buffer o Stream detectado! Finalizando de inmediato...");  
+                break; 
+            } else {  
+                console.log(`⏳ Buffer vacío. Espera dinámica de reintento: ${baseWait / 1000}s...`);  
+                await new Promise(r => setTimeout(r, baseWait));  
+                baseWait = Math.min(baseWait + 1000, 8000);  
+            }  
+  
+        } catch (e) {}  
+    }  
+    return !!global.videoCapturado;  
 }
 
 // ============================================================================
-// 3. ORQUESTADOR PRINCIPAL
+// 5. ORQUESTADOR PRINCIPAL
 // ============================================================================
 async function main() {
     const args = process.argv.slice(2);
@@ -273,7 +313,7 @@ async function main() {
     console.log(`🖥️ Modo Invisible: ${MODO_INVISIBLE}`);
     console.log("======================================================");
 
-    // Conexión con argumentos gráficos y de memoria ultra-optimizados para Celeron
+    // Conexión con argumentos optimizados
     const { browser, page } = await connect({
         headless: MODO_INVISIBLE,
         args: [
@@ -288,7 +328,7 @@ async function main() {
         connectOption: { defaultViewport: null }
     });
 
-    // Activar Blindaje de Navegador para neutralizar Popups agresivos de Cuevana
+    // Activar Blindaje de Navegador para neutralizar Popups agresivos
     blindarNavegador(browser, page);
 
     // CONFIGURACIÓN CRÍTICA PARA DOCKER Y SITIOS LENTOS
@@ -347,7 +387,10 @@ async function main() {
         const receta = cargarRecetaPorDominio(ARG_DOMINIO);
         if (!receta) throw new Error(`No se encontró receta para ${ARG_DOMINIO}`);
 
-        // --- PASO 1: BÚSQUEDA (DIRECTA SI APLICA) ---
+        // CALCULO DEL CVD: Medición en caliente de CPU y Red
+        const cvd = await calcularCVD(page, receta.dominio);
+
+        // --- PASO 1: BÚSQUEDA ---
         let searchUrl = null;
         if (ARG_DOMINIO.includes('jkanime')) {
             searchUrl = `https://${ARG_DOMINIO}/buscar/${encodeURIComponent(ARG_KEYWORD)}`;
@@ -359,10 +402,10 @@ async function main() {
             console.log(`📡 Navegando directamente a la búsqueda: ${searchUrl}`);
             await navegarYAbortar(page, searchUrl, 'a', false);
         } else {
-            // Fallback genérico para otros sitios si no hay URL parametrizada
+            // Fallback genérico para otros sitios si no hay URL estructurada
             const initSelector = receta.searchSelector || 'input[type="search"], input[name="q"], #search';
             await navegarYAbortar(page, `https://${receta.dominio}`, initSelector, false);
-            await esperarBypass(page);
+            await esperarBypass(page, cvd);
 
             const sSelector = receta.searchSelector || 'input[type="search"], input[name="q"], #search';
             await page.waitForSelector(sSelector, { timeout: 15000 });
@@ -377,13 +420,25 @@ async function main() {
                 await page.$eval(sSelector, (el) => el.closest('form')?.submit());
             }
         }
-        await esperarBypass(page);
+        await esperarBypass(page, cvd);
 
-        // Extraer resultados de la búsqueda
-        const enlaces = await page.evaluate((kw) => {
-            return Array.from(document.querySelectorAll('a')).map(a => ({ href: a.href, text: a.innerText.trim() }))
-                .filter(e => e.text.toLowerCase().includes(kw.toLowerCase()) && e.href.length > 10);
-        }, ARG_KEYWORD);
+        // Extraer resultados del DOM reactivamente (Event-Driven)
+        console.log("⏳ Buscando resultados en el DOM...");
+        const maxWaitTime = Math.round(15000 * cvd);
+        
+        const enlaces = await page.waitForFunction((kw) => {
+            const normalizar = (texto) => {
+                return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+            };
+            const kwNormalizado = normalizar(kw);
+            const targets = Array.from(document.querySelectorAll('a'))
+                .map(a => ({ href: a.href, text: a.innerText.trim() }))
+                .filter(e => normalizar(e.text).includes(kwNormalizado) && e.href.length > 10);
+            
+            return targets.length > 0 ? targets : null;
+        }, { timeout: maxWaitTime, polling: 300 }, ARG_KEYWORD)
+        .then(async (handle) => await handle.jsonValue())
+        .catch(() => []);
         
         if (enlaces.length === 0) throw new Error("No se encontraron resultados en la página.");
 
@@ -394,9 +449,9 @@ async function main() {
 
         // --- PASO 2: FICHA DEL SHOW (PÁGINA CRÍTICA) ---
         await navegarYAbortar(page, urlBaseFinal, 'body', true);
-        await esperarBypass(page);
+        await esperarBypass(page, cvd);
 
-        // Interacción Panel: Seleccionar Tipo (Serie o Película)
+        // Interacción Panel: Seleccionar Tipo
         const tipo = await esperarRespuesta('SELECT_TYPE', "¿Serie o Película?", { titulo: show.text });
         const clasificacionFinal = (tipo === 'P') ? 'PELICULA_OVA' : 'SERIE';
 
@@ -419,9 +474,9 @@ async function main() {
         console.log(`➡️ Navegando al video final: ${targetUrl}`);
         const selectorVideo = '.video-play, #play-button, video, .vjs-big-play-button';
         await navegarYAbortar(page, targetUrl, selectorVideo, true);
-        await esperarBypass(page);
+        await esperarBypass(page, cvd);
 
-        // Intentar click inicial en botones visibles para disparar reproductores embebidos
+        // Intentar click inicial en botones visibles
         const diag = await page.evaluate(() => ({
             hasPlay: document.querySelector('.video-play') !== null,
             servers: Array.from(document.querySelectorAll('li[role="presentation"], .server-item')).map(el => el.innerText.trim())
@@ -436,7 +491,7 @@ async function main() {
         }
 
         // Ejecutar el Sandbox agresivo adaptativo
-        await activarVideoSandbox(page);
+        await activarVideoSandbox(page, cvd);
 
         if (global.videoCapturado) {
             console.log(`\n🎉 ¡ÉXITO! Enlace capturado: ${global.videoCapturado}`);
