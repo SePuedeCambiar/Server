@@ -12,24 +12,36 @@ from datetime import datetime
 # CONFIGURACIÓN GLOBAL
 # ==============================================================================
 class Config:
+    # Sube dos niveles desde src/core/ para llegar a la raíz del proyecto
     BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     DB_PATH = os.path.join(BASE_DIR, "data", "playlist.db")
     LOG_FILE = os.path.join(BASE_DIR, "tv_system.log")
     FFMPEG_LOG = os.path.join(BASE_DIR, "ffmpeg_errors.log")
     COOKIES_FILE = os.path.join(BASE_DIR, "cookies.txt")
-    ALMACEN = "/dev/shm/almacen_tv"
+    ALMACEN = "/dev/shm/almacen_tv"  # Disco en RAM para evitar desgaste de SSD/SD
 
+    # Streaming
     RTMP_URL = "rtmp://mediamtx:1935/novela"
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+    # MODO_EMISION: 'copy' (rápido, sin CPU) o 'transcode' (estandariza calidad)
     MODO_EMISION = 'copy'
 
+    # Parámetros para modo 'transcode'
     VIDEO_SCALE = "scale=1280:720,fps=25,format=yuv420p"
     FFMPEG_TRANSCODE_PARAMS = [
         "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
         "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k", "-f", "flv"
     ]
+
+    # Parámetros para modo 'copy' - ARCHIVOS LOCALES
     FFMPEG_COPY_PURE = ["-c:v", "copy", "-c:a", "copy", "-f", "flv"]
-    FFMPEG_COPY_SMART = ["-c:v", "copy", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k", "-f", "flv"]
+
+    # Parámetros para modo 'copy' - STREAMS REMOTOS
+    FFMPEG_COPY_SMART = [
+        "-c:v", "copy", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k",
+        "-f", "flv"
+    ]
 
     @classmethod
     def preparar_entorno(cls):
@@ -47,17 +59,20 @@ logging.basicConfig(
 logger = logging.getLogger("TV_System")
 
 # ==============================================================================
-# GESTIÓN DE BASE DE DATOS
+# GESTIÓN DE BASE DE DATOS (CON TIMEOUT PARA EVITAR LOCKS)
 # ==============================================================================
 class PlaylistDB:
     def __init__(self):
-        self.conn = sqlite3.connect(Config.DB_PATH, check_same_thread=False)
+        # timeout=30 es la clave para evitar el error "database is locked"
+        self.conn = sqlite3.connect(Config.DB_PATH, check_same_thread=False, timeout=30)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL;")
 
     def obtener_siguiente(self):
         cursor = self.conn.cursor()
         ahora_str = datetime.now().strftime("%H:%M")
+
+        # 1. Contenido programado
         cursor.execute("""
             SELECT * FROM contenidos
             WHERE reproducido = 0 AND visto = 0 AND hora_programada IS NOT NULL AND hora_programada <= ?
@@ -65,15 +80,20 @@ class PlaylistDB:
         """, (ahora_str,))
         res = cursor.fetchone()
         if res: return res
+
+        # 2. Cola general (Fallback)
         cursor.execute("SELECT * FROM contenidos WHERE reproducido = 0 AND visto = 0 AND hora_programada IS NULL ORDER BY id ASC LIMIT 1")
         return cursor.fetchone()
 
     def marcar_reproducido(self, video_id):
-        self.conn.execute("UPDATE contenidos SET reproducido = 1 WHERE id = ?", (video_id,))
-        self.conn.commit()
+        try:
+            self.conn.execute("UPDATE contenidos SET reproducido = 1 WHERE id = ?", (video_id,))
+            self.conn.commit()
+        except sqlite3.OperationalError as e:
+            logger.error(f"❌ Error al marcar reproducido (DB Lock): {e}")
 
 # ==============================================================================
-# MÓDULO DE DESCARGA (RESTAURADO Y REPARADO)
+# MÓDULO DE DESCARGA
 # ==============================================================================
 class Downloader:
     def __init__(self):
@@ -168,26 +188,16 @@ class Streamer:
                     lines = f.read().splitlines()
                     stream_url, referer = lines[0], lines[1]
 
-            intentos = 3
-            saludable = False
-            for i in range(1, intentos + 1):
-                if self.verificar_salud_url(stream_url, referer):
-                    saludable = True
-                    break
-                time.sleep(1.5)
-
-            if not saludable:
-                if self.ejecutar_recaptura_autonoma(video_data):
-                    conn = sqlite3.connect(Config.DB_PATH)
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT * FROM contenidos WHERE id = ?", (video_id,))
-                    row = cursor.fetchone()
-                    conn.close()
-                    if row:
-                        nuevo_video_data = dict(zip([col[0] for col in cursor.description], row))
-                        if os.path.exists(url_meta): os.remove(url_meta)
-                        return self.emitir(nuevo_video_data)
-                return False
+            if not self.verificar_salud_url(stream_url, referer):
+                if not self.ejecutar_recaptura_autonoma(video_data):
+                    return False
+                # Recargar datos actualizados de la DB tras la recaptura
+                cursor = self.db.conn.cursor()
+                cursor.execute("SELECT * FROM contenidos WHERE id = ?", (video_id,))
+                row = cursor.fetchone()
+                if row:
+                    video_data = dict(zip([col[0] for col in cursor.description], row))
+                    stream_url = video_data['url_final']
 
             logger.info(f"🎬 TRANSMITIENDO: {stream_url}")
             if Config.MODO_EMISION == 'copy':

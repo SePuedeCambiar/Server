@@ -6,6 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1
 
 # 2. Instalar dependencias esenciales del sistema
+# build-essential es clave aquí para que bcrypt se pueda compilar correctamente
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv \
     curl ffmpeg wget ca-certificates \
@@ -33,7 +34,17 @@ COPY . /app
 # 5. Configuración del entorno virtual de Python
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
-RUN pip install --no-cache-dir fastapi uvicorn jinja2 python-multipart requests passlib PyJWT
+
+# --- CAMBIO CRÍTICO: Añadimos 'bcrypt' al final de la lista ---
+RUN pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    jinja2 \
+    python-multipart \
+    requests \
+    passlib \
+    PyJWT \
+    bcrypt
 
 # 6. Instalación de dependencias de Node.js
 RUN npm install puppeteer-real-browser better-sqlite3

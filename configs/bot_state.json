@@ -1,5 +1,7 @@
 {
-  "estado": "IDLE",
-  "message": "¡Contenido guardado con éxito!",
-  "timestamp": "2026-06-15T19:02:32.075Z"
+  "estado": "SELECT_TYPE",
+  "pregunta": "¿Serie o Película?",
+  "waiting": false,
+  "titulo": "2026\n\nAmos del Universo",
+  "timestamp": "2026-06-15T21:09:58.150Z"
 }
