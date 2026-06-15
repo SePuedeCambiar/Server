@@ -7,7 +7,7 @@ echo "===================================================="
 # 1. Asegurar que existe la carpeta de datos
 mkdir -p /app/data
 
-# 2. Inicializar base de datos de manera automática con la nueva arquitectura
+# 2. Inicializar base de datos con la arquitectura de bloques y tiempos
 python3 -c "
 import sqlite3
 import os
@@ -18,7 +18,6 @@ db_exists = os.path.exists(db_path)
 conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 
-# Crear la tabla con soporte para bloques, parrilla de TV, duraciones e historial
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS contenidos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,14 +42,22 @@ conn.commit()
 conn.close()
 
 if not db_exists:
-    print('📦 Base de datos e índices creados con la nueva arquitectura por primera vez.')
+    print('📦 Base de datos creada con soporte de tiempos y bloques.')
 "
 
-# 3. Lanzar el EMISOR de Vídeo en segundo plano (Ruta actualizada)
+# 3. Lanzar el SCHEDULER (El Cerebro) en un bucle infinito
+# Se ejecuta cada 10 minutos para actualizar duraciones y archivar contenido visto
+echo "📅 Iniciando Planificador y Mantenimiento (scheduler.py)..."
+(while true; do 
+    python3 src/core/scheduler.py >> /app/scheduler.log 2>&1
+    sleep 600 
+done) &
+
+# 4. Lanzar el EMISOR de Vídeo en segundo plano
 echo "🎬 Iniciando Motor de Transmisión (emisor.py)..."
 python3 src/core/emisor.py > /app/tv_system.log 2>&1 &
 
-# 4. Lanzar el PANEL DE CONTROL (FastAPI) en primer plano (Ruta actualizada)
+# 5. Lanzar el PANEL DE CONTROL (FastAPI) en primer plano
 echo "🚀 Iniciando Panel de Control Web (manager.py)..."
 echo "===================================================="
 exec python3 src/api/manager.py
