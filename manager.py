@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Request, Form, Response, Query
+from fastapi import FastAPI, Request, Form, Response, Query, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.templating import Jinja2Templates
 import sqlite3
 import subprocess
@@ -9,10 +10,11 @@ import json
 import jinja2
 import logging
 import requests
-import urllib.parse  # 👈 Importación para escapar parámetros en el proxy
+import urllib.parse
+import secrets
 
 # ==============================================================================
-# 1. CONFIGURACIÓN DE LOGS Y SISTEMA
+# 1. CONFIGURACIÓN DE LOGS Y SEGURIDAD
 # ==============================================================================
 logging.basicConfig(
     level=logging.INFO,
@@ -22,6 +24,24 @@ logging.basicConfig(
 logger = logging.getLogger("TV_Manager")
 
 app = FastAPI()
+
+# --- SISTEMA DE LOGIN (Bug 4) ---
+security = HTTPBasic()
+
+def verificar_seguridad(credentials: HTTPBasicCredentials = Depends(security)):
+    """
+    Valida que el usuario y contraseña sean correctos.
+    Cambia 'admin' y 'MiClaveSegura123' por lo que prefieras.
+    """
+    usuario_correcto = secrets.compare_digest(credentials.username, "admin")
+    contra_correcta = secrets.compare_digest(credentials.password, "MiClaveSegura123")
+    if not (usuario_correcto and contra_correcta):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales incorrectas",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
 
 # Control de proceso para evitar saturar la RAM del Celeron
 proceso_grabador = None
@@ -63,16 +83,16 @@ def get_db_connection():
         return None
 
 # ==============================================================================
-# 3. API DE COMUNICACIÓN CON EL BOT Y LA WEB
+# 3. API DE COMUNICACIÓN (Protegidas por Login excepto Ping y Upload)
 # ==============================================================================
 
 @app.get("/api/ping")
 async def ping():
+    """Abierto para que la extensión de Chrome verifique conexión"""
     return {"status": "ok", "message": "Servidor de TV conectado correctamente."}
 
 @app.get("/api/sites")
-async def get_sites():
-    """Devuelve la lista de dominios con recetas cargadas"""
+async def get_sites(username: str = Depends(verificar_seguridad)):
     try:
         archivos = os.listdir(CONFIGS_DIR)
         dominios = [f.replace("_receta.json", "") for f in archivos if f.endswith("_receta.json")]
@@ -81,8 +101,7 @@ async def get_sites():
         return {"sites": [], "error": str(e)}
 
 @app.get("/api/bot_status")
-async def bot_status():
-    """Lee el archivo de estado del bot para que la web sepa qué mostrar"""
+async def bot_status(username: str = Depends(verificar_seguridad)):
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r", encoding="utf-8") as f:
@@ -92,8 +111,7 @@ async def bot_status():
     return {"estado": "IDLE"}
 
 @app.post("/api/bot_answer")
-async def bot_answer(request: Request):
-    """Recibe la respuesta del usuario desde la web y la escribe para el bot"""
+async def bot_answer(request: Request, username: str = Depends(verificar_seguridad)):
     try:
         data = await request.json()
         respuesta = data.get("respuesta")
@@ -112,7 +130,7 @@ async def bot_answer(request: Request):
 
 @app.post("/api/upload_recipe")
 async def upload_recipe(request: Request):
-    """Sube la receta grabada desde la extensión de Chrome"""
+    """Abierto para que la extensión de Chrome suba recetas"""
     try:
         data = await request.json()
         dominio = data.get("dominio")
@@ -126,11 +144,11 @@ async def upload_recipe(request: Request):
         return {"status": "error", "message": str(e)}
 
 # ==============================================================================
-# 4. RUTAS DEL PANEL DE CONTROL (HTML)
+# 4. RUTAS DEL PANEL DE CONTROL (Protegidas por Login)
 # ==============================================================================
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
+async def index(request: Request, username: str = Depends(verificar_seguridad)):
     conn = get_db_connection()
     if conn:
         try:
@@ -142,7 +160,7 @@ async def index(request: Request):
     return HTMLResponse(content="Error de base de datos", status_code=500)
 
 @app.get("/ver_listas", response_class=HTMLResponse)
-async def ver_listas(request: Request):
+async def ver_listas(request: Request, username: str = Depends(verificar_seguridad)):
     conn = get_db_connection()
     if conn:
         try:
@@ -156,20 +174,26 @@ async def ver_listas(request: Request):
 @app.post("/add_content")
 async def add_content(
     dominio: str = Form(...),
-    keyword: str = Form(...)
+    keyword: str = Form(...),
+    username: str = Depends(verificar_seguridad)
 ):
-    """Lanza el bot de captura interactivo"""
+    """Lanza el bot de captura interactivo con bloqueo de estado STARTING (Bug 1)"""
     global proceso_grabador
 
-    # Protección de RAM (Celeron)
     if proceso_grabador is not None:
         proceso_grabador.poll()
         if proceso_grabador.returncode is None:
             return HTMLResponse(content="⚠️ El bot ya está trabajando. Espera a que termine.", status_code=429)
 
-    # Limpiar estado previo antes de iniciar un nuevo bot
-    if os.path.exists(STATE_FILE):
-        os.remove(STATE_FILE)
+    # --- SOLUCIÓN BUG 1: BLOQUEO DE ESTADO INICIAL ---
+    # Escribimos STARTING inmediatamente para que el frontend no salte a IDLE
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump({
+            "estado": "STARTING", 
+            "message": "🤖 Despertando navegador inteligente... por favor espera.",
+            "timestamp": "ahora"
+        }, f, indent=2)
+    # ------------------------------------------------
 
     env = os.environ.copy()
     comando = ["node", "reproductor.js", f"--dominio={dominio}", f"--keyword={keyword}"]
@@ -179,11 +203,12 @@ async def add_content(
         logger.info(f"🤖 Bot interactivo lanzado: {keyword} en {dominio}")
         return HTMLResponse(content="🚀 Bot iniciado. Revisa la consola del panel.", status_code=200)
     except Exception as e:
-        logger.error(f"Error lanzando bot: {e}")
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump({"estado": "ERROR", "message": str(e)}, f)
         return HTMLResponse(content=f"Error: {e}", status_code=500)
 
 @app.get("/delete/{video_id}")
-async def delete_video(video_id: int):
+async def delete_video(video_id: int, username: str = Depends(verificar_seguridad)):
     conn = get_db_connection()
     if conn:
         conn.execute("DELETE FROM contenidos WHERE id = ?", (video_id,))
@@ -192,15 +217,11 @@ async def delete_video(video_id: int):
     return RedirectResponse(url="/ver_listas", status_code=303)
 
 # ==============================================================================
-# 5. PROXY DE-OFUSCADOR DE VIDEO EN VIVO (CUEVANA / FILELIONS BYPASS RECURSIVO)
+# 5. PROXY DE-OFUSCADOR DE VIDEO (Mantenido intacto)
 # ==============================================================================
 
 @app.get("/proxy/manifest.m3u8")
 def proxy_manifest(url: str = Query(...), referer: str = Query(...)):
-    """
-    Descarga el manifiesto original y re-escribe las URLs de los segmentos
-    o sub-playlists para que se procesen a través de nuestro proxy de-ofuscador local.
-    """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer": referer
@@ -213,34 +234,25 @@ def proxy_manifest(url: str = Query(...), referer: str = Query(...)):
         lines = r.text.splitlines()
         new_lines = []
         base_url = url.rsplit('/', 1)[0]
-        
-        # Bandera de contexto: detecta si la siguiente línea es una sub-playlist
         es_subplaylist = False
 
         for line in lines:
             line_strip = line.strip()
-            if not line_strip:
-                continue
+            if not line_strip: continue
 
             if line_strip.startswith("#EXT-X-STREAM-INF"):
                 es_subplaylist = True
                 new_lines.append(line)
             elif not line_strip.startswith("#"):
-                # Convertir URL relativa a absoluta si es necesario
                 abs_url = line_strip if line_strip.startswith("http") else f"{base_url}/{line_strip}"
-
-                # Codificar parámetros de forma segura para evitar roturas
                 safe_abs_url = urllib.parse.quote(abs_url, safe='')
                 safe_referer = urllib.parse.quote(referer, safe='')
 
-                # Si el contexto dictó que es playlist, O la URL grita explícitamente que lo es
                 if es_subplaylist or ".m3u" in abs_url.lower():
                     proxy_url = f"http://localhost:9001/proxy/manifest.m3u8?url={safe_abs_url}&referer={safe_referer}"
-                    es_subplaylist = False  # Resetear contexto
+                    es_subplaylist = False
                 else:
-                    # Si apunta a un fragmento de video (.image, .ts, etc.), al de-ofuscador de bytes
                     proxy_url = f"http://localhost:9001/proxy/segment.ts?url={safe_abs_url}&referer={safe_referer}"
-
                 new_lines.append(proxy_url)
             else:
                 new_lines.append(line)
@@ -250,14 +262,8 @@ def proxy_manifest(url: str = Query(...), referer: str = Query(...)):
         logger.error(f"Error en proxy manifest: {e}")
         return Response(content=f"Error en proxy manifest: {e}", status_code=500)
 
-
 @app.get("/proxy/segment.ts")
 def proxy_segment(url: str = Query(...), referer: str = Query(...)):
-    """
-    Descarga el fragmento ofuscado (.image / .png), detecta de forma genérica
-    dónde termina la imagen PNG basándose en la alineación de sincronización
-    MPEG-TS (0x47 cada 188 bytes) y sirve el flujo de video limpio.
-    """
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer": referer
@@ -270,19 +276,16 @@ def proxy_segment(url: str = Query(...), referer: str = Query(...)):
         data = r.content
         data_len = len(data)
 
-        # Algoritmo de de-ofuscación genérico por alineación:
-        # Buscamos el byte de sincronización MPEG-TS (0x47) alineado cada 188 bytes en 4 paquetes
         start_idx = 0
-        for i in range(min(150000, data_len - 188 * 4)):  # Escaneamos los primeros 150KB del archivo
+        for i in range(min(150000, data_len - 188 * 4)):
             if data[i] == 0x47 and data[i + 188] == 0x47 and data[i + 188 * 2] == 0x47 and data[i + 188 * 3] == 0x47:
                 start_idx = i
                 break
 
-        # Si se detecta el patrón, recortamos el encabezado PNG del principio
         if start_idx > 0:
             clean_ts = data[start_idx:]
         else:
-            clean_ts = data  # Fallback si ya era un TS limpio o el escaneo no arrojó coincidencias
+            clean_ts = data
 
         return Response(content=clean_ts, media_type="video/mp2t")
     except Exception as e:
@@ -294,5 +297,5 @@ def proxy_segment(url: str = Query(...), referer: str = Query(...)):
 # ==============================================================================
 if __name__ == "__main__":
     import uvicorn
-    logger.info("🚀 Iniciando TV Manager en puerto 9001...")
+    logger.info("🚀 Iniciando TV Manager en puerto 9001 con Protección de Login...")
     uvicorn.run(app, host="0.0.0.0", port=9001)
