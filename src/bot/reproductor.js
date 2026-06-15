@@ -4,12 +4,16 @@ const path = require('path');
 const Database = require('better-sqlite3');
 
 // ============================================================================
-// 1. CONFIGURACIÓN DE BASE DE DATOS Y ESTADO
+// 1. CONFIGURACIÓN DE BASE DE DATOS Y ESTADO (RUTAS DINÁMICAS ABSOLUTAS)
 // ============================================================================
-const db = new Database('data/playlist.db');
+// Subimos dos niveles para llegar al root: src/bot -> src -> root
+const ROOT_DIR = path.resolve(__dirname, '..', '..');
+
+const DB_PATH = path.join(ROOT_DIR, 'data', 'playlist.db');
+const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 
-const STATE_FILE = path.join(__dirname, 'configs', 'bot_state.json');
+const STATE_FILE = path.join(ROOT_DIR, 'configs', 'bot_state.json');
 const MODO_INVISIBLE = false;
 
 global.videoCapturado = null;
@@ -19,10 +23,10 @@ global.currentMainPage = null;
  * Escribe el estado actual del bot en el archivo JSON para que el Panel Web lo lea
  */
 async function enviarEstado(estado, datos = {}) {
-    const payload = { 
-        estado, 
-        ...datos, 
-        timestamp: new Date().toISOString() 
+    const payload = {
+        estado,
+        ...datos,
+        timestamp: new Date().toISOString()
     };
     try {
         fs.writeFileSync(STATE_FILE, JSON.stringify(payload, null, 2));
@@ -36,11 +40,10 @@ async function enviarEstado(estado, datos = {}) {
  */
 async function esperarRespuesta(estado, preguntaTexto, datosExtra = {}) {
     console.log(`⏳ [Web-Bridge] Esperando respuesta para: ${preguntaTexto}`);
-    
-    await enviarEstado(estado, { 
-        pregunta: preguntaTexto, 
-        waiting: true, 
-        ...datosExtra 
+    await enviarEstado(estado, {
+        pregunta: preguntaTexto,
+        waiting: true,
+        ...datosExtra
     });
 
     return new Promise((resolve) => {
@@ -66,7 +69,7 @@ async function esperarRespuesta(estado, preguntaTexto, datosExtra = {}) {
 // ============================================================================
 
 function cargarRecetaPorDominio(dominioBuscado) {
-    const configsDir = path.join(__dirname, 'configs');
+    const configsDir = path.join(ROOT_DIR, 'configs');
     if (!fs.existsSync(configsDir)) return null;
     const archivos = fs.readdirSync(configsDir).filter(f => f.endsWith('_receta.json'));
     for (const archivo of archivos) {
@@ -105,7 +108,6 @@ function blindarNavegador(browser, mainPage) {
 async function esperarIFramesExternos(page) {
     console.log("⏳ Esperando que el reproductor inyecte el iframe de video externo...");
     const start = Date.now();
-    
     while (Date.now() - start < 8000) {
         const frames = page.frames();
         const tieneHostExterno = frames.some(f => {
@@ -136,13 +138,12 @@ async function medirLatenciaHost(page) {
         try {
             const urlStr = frame.url();
             if (urlStr && !urlStr.includes('about:blank') && !urlStr.includes('cuevana') && !urlStr.includes('jkanime')) {
-                // Buscamos las dimensiones físicas del iframe para asegurar que sea el reproductor
                 const frameElement = await frame.frameElement();
                 if (frameElement) {
                     const rect = await frameElement.boundingBox();
                     if (rect && rect.width > 250 && rect.height > 120) {
                         targetHost = new URL(urlStr).hostname;
-                        break; 
+                        break;
                     }
                 }
             }
@@ -155,7 +156,6 @@ async function medirLatenciaHost(page) {
     }
 
     console.log(`⚡ Servidor de video activo: [${targetHost}]. Midiendo latencia directa...`);
-    
     const rttHost = await page.evaluate(async (host) => {
         const start = Date.now();
         try {
@@ -166,7 +166,7 @@ async function medirLatenciaHost(page) {
                 await fetch(`https://${host}`, { method: 'GET', mode: 'no-cors', cache: 'no-store' });
                 return Date.now() - start;
             } catch (err) {
-                return 1000; 
+                return 1000;
             }
         }
     }, targetHost);
@@ -215,7 +215,6 @@ async function esperarBypass(page, maxIntentos = 30) {
 async function navegarYAbortar(page, url, selector, esPaginaCritica = false) {
     try {
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
-        
         if (esPaginaCritica) {
             await page.waitForSelector(selector, { timeout: 12000 });
             return;
@@ -224,7 +223,6 @@ async function navegarYAbortar(page, url, selector, esPaginaCritica = false) {
         const currentUrl = page.url();
         const titulo = await page.title().catch(() => '');
         const esCF = titulo.toLowerCase().includes('just a moment') || currentUrl.includes('challenges.cloudflare.com');
-        
         if (!esCF) {
             await page.waitForSelector(selector, { timeout: 10000 });
             await page.evaluate(() => window.stop()).catch(() => {});
@@ -258,14 +256,10 @@ async function activarVideoSandbox(page, rttHost, cpuScore) {
     console.log("\n🎬 Iniciando Extracción Sandbox...");
     const playSelectors = ['.vjs-big-play-button', '.play-button', '.btn-play', '[class*="play"]', 'video', '.video-play', '.jw-icon-display', '.plyr__control--overlaid'];
     const startTime = Date.now();
-    
-    // 📐 FÓRMULA DE CUELLO DE BOTELLA FÍSICO (W0 + FACTOR EXPONENCIAL)
-    const factorExponencial = 1.15 + (cpuScore * 0.05); // Escalado dinámico por hardware
+    const factorExponencial = 1.15 + (cpuScore * 0.05); 
     const baseDelay = rttHost ? Math.max(2500, Math.min(8000, 2500 + (rttHost * cpuScore))) : 2000;
-    
-    let k = 0; 
-    
-    while (Date.now() - startTime < 60000) { 
+    let k = 0;
+    while (Date.now() - startTime < 60000) {
         if (global.videoCapturado) return true;
         try {
             await page.evaluate(() => {
@@ -281,7 +275,6 @@ async function activarVideoSandbox(page, rttHost, cpuScore) {
             for (const frame of frames) {
                 try {
                     if (frame.url().includes('about:blank')) continue;
-                    
                     const src = await frame.evaluate(() => {
                         const vid = document.querySelector('video'); return vid ? vid.src : null;
                     });
@@ -289,7 +282,6 @@ async function activarVideoSandbox(page, rttHost, cpuScore) {
                         global.videoCapturado = src;
                         return true;
                     }
-                    
                     for (const selector of playSelectors) {
                         const el = await frame.$(selector);
                         if (el) await frame.evaluate((sel) => { document.querySelector(sel)?.click(); }, selector);
@@ -302,7 +294,7 @@ async function activarVideoSandbox(page, rttHost, cpuScore) {
                 break;
             } else {
                 let waitTime = rttHost ? Math.round(baseDelay * Math.pow(factorExponencial, k)) : 2000;
-                waitTime = Math.min(10000, waitTime); 
+                waitTime = Math.min(10000, waitTime);
 
                 console.log(`⏳ Ciclo #${k} - Espera: ${waitTime}ms (factor: ${factorExponencial.toFixed(2)})`);
                 await new Promise(r => setTimeout(r, waitTime));
@@ -327,10 +319,9 @@ async function main() {
         process.exit(1);
     }
 
-    // Profiling de CPU ultra-rápido local para escalar el factor exponencial
     const startCPU = Date.now();
     for (let i = 0; i < 5000000; i++) { Math.sqrt(i); }
-    const cpuTime = Date.now() - startCPU; 
+    const cpuTime = Date.now() - startCPU;
     const cpuScore = Math.max(1.0, cpuTime / 15);
 
     console.log("======================================================");
@@ -341,11 +332,11 @@ async function main() {
     const { browser, page } = await connect({
         headless: MODO_INVISIBLE,
         args: [
-            "--start-maximized", 
-            "--no-sandbox", 
+            "--start-maximized",
+            "--no-sandbox",
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",         
-            "--disable-accelerated-2d-canvas", 
+            "--disable-accelerated-2d-canvas",
             "--disable-gpu"                    
         ],
         turnstile: true,
@@ -353,14 +344,13 @@ async function main() {
     });
 
     blindarNavegador(browser, page);
-    page.setDefaultNavigationTimeout(90000); 
+    page.setDefaultNavigationTimeout(90000);
 
     await page.setRequestInterception(true);
     let peticionesBloqueadas = 0;
     page.on('request', (req) => {
         const type = req.resourceType();
         const url = req.url().toLowerCase();
-        
         if (url.includes('cloudflare') || url.includes('challenges') || url.includes('captcha') || url.includes('turnstile')) {
             return req.continue();
         }
@@ -401,8 +391,7 @@ async function main() {
 
         if (searchUrl) {
             console.log(`📡 Navegando directamente a la búsqueda: ${searchUrl}`);
-            // Configurado en 'true' (Página Crítica) para evitar que window.stop() cancele la API de resultados
-            await navegarYAbortar(page, searchUrl, 'a', true); 
+            await navegarYAbortar(page, searchUrl, 'a', true);
         } else {
             const initSelector = receta.searchSelector || 'input[type="search"], input[name="q"], #search';
             await navegarYAbortar(page, `https://${receta.dominio}`, initSelector, false);
@@ -415,15 +404,14 @@ async function main() {
             }, ARG_KEYWORD);
 
             const subSelector = receta.submitSelector || 'button[type="submit"], input[type="submit"], .search-submit';
-            try { 
-                await page.click(subSelector); 
-            } catch (e) { 
-                await page.$eval(sSelector, (el) => el.closest('form')?.submit()); 
+            try {
+                await page.click(subSelector);
+            } catch (e) {
+                await page.$eval(sSelector, (el) => el.closest('form')?.submit());
             }  
         }
         await esperarBypass(page);
 
-        // Extraer resultados de la búsqueda con reintentos y normalización de acentos
         console.log("⏳ Esperando que se rendericen los resultados en el DOM...");
         let enlaces = [];
         for (let i = 0; i < 5; i++) {
@@ -438,14 +426,13 @@ async function main() {
             if (enlaces.length > 0) break;
             await new Promise(r => setTimeout(r, 2000));
         }
-        
         if (enlaces.length === 0) throw new Error("No se encontraron resultados en la página.");
 
         const seleccionIdx = parseInt(await esperarRespuesta('SELECT_SHOW', "Selecciona el show", { resultados: enlaces })) - 1;
         const show = enlaces[seleccionIdx] || enlaces[0];
         const urlBaseFinal = show.href;
 
-        // --- PASO 2: FICHA DEL SHOW (PÁGINA CRÍTICA) ---
+        // --- PASO 2: FICHA DEL SHOW ---
         await navegarYAbortar(page, urlBaseFinal, 'body', true);
         await esperarBypass(page);
 
@@ -458,7 +445,7 @@ async function main() {
         if (clasificacionFinal === 'SERIE') {
             const totalEpisodios = await page.evaluate(() => {
                 const text = document.body.innerText;
-                const m = text.match(/Episodios:\s*(\d+)/i); 
+                const m = text.match(/Episodios:\s*(\d+)/i);
                 return m ? parseInt(m[1], 10) : null;
             });
 
@@ -467,13 +454,12 @@ async function main() {
             targetUrl = generarUrlEpisodio(urlBaseFinal, capituloElegido, receta);
         }
 
-        // --- PASO 3: CAPTURA FINAL (PÁGINA DEL REPRODUCTOR) ---
+        // --- PASO 3: CAPTURA FINAL ---
         console.log(`➡️  Navegando al video final: ${targetUrl}`);
         const selectorVideo = '.video-play, #play-button, video, .vjs-big-play-button';
         await navegarYAbortar(page, targetUrl, selectorVideo, true);
         await esperarBypass(page);
 
-        // 1. Ejecutar clicks iniciales primero para forzar la inyección de iframes en el DOM
         const diag = await page.evaluate(() => ({
             hasPlay: document.querySelector('.video-play') !== null,
             servers: Array.from(document.querySelectorAll('li[role="presentation"], .server-item')).map(el => el.innerText.trim())
@@ -488,16 +474,12 @@ async function main() {
             await page.evaluate(() => {
                 document.querySelector('li[role="presentation"], .server-item')?.click();
             });
-            await new Promise(r => setTimeout(r, 1500)); 
+            await new Promise(r => setTimeout(r, 1500));
         }
 
-        // 2. Esperar que el DOM inserte el iframe externo tras los clicks
         await esperarIFramesExternos(page);
-        
-        // 3. Medir latencia directamente con el host externo inyectado
         const rttHost = await medirLatenciaHost(page);
 
-        // Ejecutar extracción con la latencia dedicada del host de video y perfil de hardware
         await activarVideoSandbox(page, rttHost, cpuScore);
 
         if (global.videoCapturado) {

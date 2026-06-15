@@ -8,10 +8,12 @@ from threading import Thread, Event
 from datetime import datetime
 
 # ==============================================================================
-# CONFIGURACIÓN GLOBAL
+# CONFIGURACIÓN GLOBAL (AJUSTADA PARA LA NUEVA ESTRUCTURA /src/core/)
 # ==============================================================================
 class Config:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    # Subimos dos niveles desde src/core/ para llegar a la raíz del proyecto
+    BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    
     DB_PATH = os.path.join(BASE_DIR, "data", "playlist.db")
     LOG_FILE = os.path.join(BASE_DIR, "tv_system.log")
     FFMPEG_LOG = os.path.join(BASE_DIR, "ffmpeg_errors.log")
@@ -53,9 +55,12 @@ class Config:
         if not os.path.exists(cls.ALMACEN):
             os.makedirs(cls.ALMACEN)
         for f in os.listdir(cls.ALMACEN):
-            try: os.remove(os.path.join(cls.ALMACEN, f))
-            except: pass
+            try: 
+                os.remove(os.path.join(cls.ALMACEN, f))
+            except Exception: 
+                pass
 
+# Configuración de logs apuntando a la ruta raíz del proyecto
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s] [%(levelname)s] %(message)s',
@@ -234,7 +239,7 @@ class Streamer:
                 os.remove(path_to_clean)
             return True
         except Exception as e:
-            logger.error(f"❌ Error executing subprocess FFmpeg: {e}")
+            logger.error(f"❌ Error ejecutando el subproceso FFmpeg: {e}")
             return False
 
 # ==============================================================================
@@ -296,5 +301,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("🛑 Apagando sistema...")
         for f in os.listdir(Config.ALMACEN):
-            try: os.remove(os.path.join(Config.ALMACEN, f))
-            except: pass
+            try: 
+                os.remove(os.path.join(Config.ALMACEN, f))
+            except Exception: 
+                pass

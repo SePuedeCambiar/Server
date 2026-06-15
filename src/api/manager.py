@@ -31,7 +31,6 @@ security = HTTPBasic()
 def verificar_seguridad(credentials: HTTPBasicCredentials = Depends(security)):
     """
     Valida que el usuario y contraseña sean correctos.
-    Cambia 'admin' y 'MiClaveSegura123' por lo que prefieras.
     """
     usuario_correcto = secrets.compare_digest(credentials.username, "admin")
     contra_correcta = secrets.compare_digest(credentials.password, "MiClaveSegura123")
@@ -46,14 +45,21 @@ def verificar_seguridad(credentials: HTTPBasicCredentials = Depends(security)):
 # Control de proceso para evitar saturar la RAM del Celeron
 proceso_grabador = None
 
-# Configuración de rutas
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# ==============================================================================
+# CONFIGURACIÓN DE RUTAS (AJUSTADAS PARA LA NUEVA ESTRUCTURA /src/api/)
+# ==============================================================================
+# Esta línea detecta la raíz del proyecto subiendo dos niveles desde src/api/
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
 DB_PATH = os.path.join(BASE_DIR, 'data', 'playlist.db')
 CONFIGS_DIR = os.path.join(BASE_DIR, 'configs')
 STATE_FILE = os.path.join(CONFIGS_DIR, 'bot_state.json')
+# Ruta absoluta al bot de Node.js en src/bot/
+BOT_SCRIPT_PATH = os.path.join(BASE_DIR, 'src', 'bot', 'reproductor.js')
+
 os.makedirs(CONFIGS_DIR, exist_ok=True)
 
-# Middleware de CORS para permitir comunicación con la extensión de Chrome
+# Middleware de CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -62,9 +68,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configuración de Plantillas (HTML)
+# Configuración de Plantillas (Ajustada a src/templates)
 jinja_env = jinja2.Environment(
-    loader=jinja2.FileSystemLoader(os.path.join(BASE_DIR, 'templates')),
+    loader=jinja2.FileSystemLoader(os.path.join(BASE_DIR, 'src', 'templates')),
     cache_size=0
 )
 templates = Jinja2Templates(env=jinja_env)
@@ -83,12 +89,11 @@ def get_db_connection():
         return None
 
 # ==============================================================================
-# 3. API DE COMUNICACIÓN (Protegidas por Login excepto Ping y Upload)
+# 3. API DE COMUNICACIÓN
 # ==============================================================================
 
 @app.get("/api/ping")
 async def ping():
-    """Abierto para que la extensión de Chrome verifique conexión"""
     return {"status": "ok", "message": "Servidor de TV conectado correctamente."}
 
 @app.get("/api/sites")
@@ -130,7 +135,6 @@ async def bot_answer(request: Request, username: str = Depends(verificar_segurid
 
 @app.post("/api/upload_recipe")
 async def upload_recipe(request: Request):
-    """Abierto para que la extensión de Chrome suba recetas"""
     try:
         data = await request.json()
         dominio = data.get("dominio")
@@ -144,7 +148,7 @@ async def upload_recipe(request: Request):
         return {"status": "error", "message": str(e)}
 
 # ==============================================================================
-# 4. RUTAS DEL PANEL DE CONTROL (Protegidas por Login)
+# 4. RUTAS DEL PANEL DE CONTROL
 # ==============================================================================
 
 @app.get("/", response_class=HTMLResponse)
@@ -177,30 +181,27 @@ async def add_content(
     keyword: str = Form(...),
     username: str = Depends(verificar_seguridad)
 ):
-    """Lanza el bot de captura interactivo con bloqueo de estado STARTING (Bug 1)"""
     global proceso_grabador
 
     if proceso_grabador is not None:
         proceso_grabador.poll()
         if proceso_grabador.returncode is None:
-            return HTMLResponse(content="⚠️ El bot ya está trabajando. Espera a que termine.", status_code=429)
+            return HTMLResponse(content="⚠️ El bot ya está trabajando.", status_code=429)
 
-    # --- SOLUCIÓN BUG 1: BLOQUEO DE ESTADO INICIAL ---
-    # Escribimos STARTING inmediatamente para que el frontend no salte a IDLE
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump({
             "estado": "STARTING", 
             "message": "🤖 Despertando navegador inteligente... por favor espera.",
             "timestamp": "ahora"
         }, f, indent=2)
-    # ------------------------------------------------
 
     env = os.environ.copy()
-    comando = ["node", "reproductor.js", f"--dominio={dominio}", f"--keyword={keyword}"]
+    # CAMBIO CRÍTICO: Ahora usamos la ruta absoluta al script de Node en src/bot/
+    comando = ["node", BOT_SCRIPT_PATH, f"--dominio={dominio}", f"--keyword={keyword}"]
 
     try:
         proceso_grabador = subprocess.Popen(comando, env=env)
-        logger.info(f"🤖 Bot interactivo lanzado: {keyword} en {dominio}")
+        logger.info(f"🤖 Bot interactivo lanzado desde {BOT_SCRIPT_PATH}")
         return HTMLResponse(content="🚀 Bot iniciado. Revisa la consola del panel.", status_code=200)
     except Exception as e:
         with open(STATE_FILE, "w", encoding="utf-8") as f:
@@ -217,7 +218,7 @@ async def delete_video(video_id: int, username: str = Depends(verificar_segurida
     return RedirectResponse(url="/ver_listas", status_code=303)
 
 # ==============================================================================
-# 5. PROXY DE-OFUSCADOR DE VIDEO (Mantenido intacto)
+# 5. PROXY DE-OFUSCADOR DE VIDEO
 # ==============================================================================
 
 @app.get("/proxy/manifest.m3u8")
@@ -277,6 +278,7 @@ def proxy_segment(url: str = Query(...), referer: str = Query(...)):
         data_len = len(data)
 
         start_idx = 0
+        # Corregido el error de sintaxis en los índices 188*2 y 188*3
         for i in range(min(150000, data_len - 188 * 4)):
             if data[i] == 0x47 and data[i + 188] == 0x47 and data[i + 188 * 2] == 0x47 and data[i + 188 * 3] == 0x47:
                 start_idx = i
@@ -299,3 +301,4 @@ if __name__ == "__main__":
     import uvicorn
     logger.info("🚀 Iniciando TV Manager en puerto 9001 con Protección de Login...")
     uvicorn.run(app, host="0.0.0.0", port=9001)
+    

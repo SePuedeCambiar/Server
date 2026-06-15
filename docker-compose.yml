@@ -19,10 +19,10 @@ services:
     ports:
       - "9001:9001"
     volumes:
-      - ./data:/app/data             # ← CAMBIADO: Ahora montamos la carpeta data completa
-      - ./configs:/app/configs
-      - ./assets:/app/assets
-      - /dev/shm:/dev/shm
+      - ./data:/app/data             # Persistencia de base de datos
+      - ./configs:/app/configs       # Recetas de navegación e interacción
+      - ./assets:/app/assets         # Medios locales
+      - /dev/shm:/dev/shm            # RAMDisk para almacenamiento temporal del streaming
     depends_on:
       - mediamtx
     restart: unless-stopped

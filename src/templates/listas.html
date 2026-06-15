@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lista Completa - TV Orchestrator</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #070708;
+            --card-bg: #0f0f12;
+            --neon-purple: #bc13fe;
+            --neon-blue: #00d2ff;
+            --neon-green: #39ff14;
+            --text-gray: #8f8f9d;
+            --border-color: #1f1f2e;
+        }
+        body { 
+            background-color: var(--bg-dark); 
+            color: #ffffff; 
+            font-family: 'Inter', sans-serif; 
+        }
+        .card { 
+            background-color: var(--card-bg); 
+            border: 1px solid var(--border-color); 
+            border-radius: 16px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        }
+        .table-dark { 
+            --bs-table-bg: #0c0c0f; 
+            border-color: var(--border-color);
+        }
+        .badge-scheduled { background-color: #ffc107; color: black; font-weight: 700; }
+        .badge-queue { background-color: #3d3d4d; color: #d1d1e0; }
+        
+        /* Badges de Estado */
+        .badge-done { background-color: rgba(57, 255, 20, 0.15); color: var(--neon-green); border: 1px solid var(--neon-green); }
+        .badge-pending { background-color: rgba(255, 193, 7, 0.15); color: #ffc107; border: 1px solid #ffc107; }
+        .badge-playing { background-color: rgba(0, 210, 255, 0.15); color: var(--neon-blue); border: 1px solid var(--neon-blue); }
+        
+        .btn-neon-cancel {
+            background-color: rgba(207, 102, 121, 0.15);
+            color: #cf6679;
+            border: 1px solid #cf6679;
+            font-weight: 600;
+            transition: 0.3s;
+        }
+        .btn-neon-cancel:hover {
+            background-color: #cf6679;
+            color: black;
+            box-shadow: 0 0 15px #cf6679;
+        }
+        .font-monospace-custom {
+            font-family: 'Courier New', Courier, monospace;
+        }
+        .text-muted-custom {
+            color: var(--text-gray);
+        }
+    </style>
+</head>
+<body class="container py-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="fw-800 m-0">📋 Lista Completa de Contenidos</h1>
+            <p class="text-muted-custom m-0">Historial de consumo y parrilla general</p>
+        </div>
+        <a href="/" class="btn btn-outline-secondary py-2 px-4">⬅️ Volver al panel</a>
+    </div>
+
+    <div class="card p-4 shadow">
+        <div class="table-responsive">
+            <table class="table table-dark table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th class="text-muted-custom" style="width: 5%">ID</th>
+                        <th style="width: 35%">Título / Tipo</th>
+                        <th class="text-center" style="width: 15%">Duración</th>
+                        <th class="text-center" style="width: 20%">Programación</th>
+                        <th class="text-center" style="width: 15%">Estado</th>
+                        <th style="width: 10%">Origen</th>
+                        <th class="text-center" style="width: 10%">Acción</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in playlist %}
+                    <tr>
+                        <td class="text-muted-custom font-monospace-custom">{{ item.id }}</td>
+                        <td>
+                            <strong class="d-block text-white" style="font-size: 1.05rem;">{{ item.titulo }}</strong>
+                            <small class="text-info">
+                                {% if item.clasificacion == 'SERIE' %}
+                                    📺 Serie (Episodio {{ item.episodio }})
+                                {% else %}
+                                    🎬 Película / OVA
+                                {% endif %}
+                            </small>
+                        </td>
+                        <td class="text-center font-monospace-custom text-muted-custom">
+                            <span class="js-duration" data-seconds="{{ item.duracion }}">--:--</span>
+                        </td>
+                        <td class="text-center">
+                            {% if item.dia %}
+                                <span class="badge badge-scheduled mb-1">📅 {{ item.dia }}</span>
+                                <small class="d-block text-muted-custom font-monospace-custom">{{ item.hora_inicio }} - {{ item.hora_fin }}</small>
+                            {% else %}
+                                <span class="badge badge-queue">📦 Cola Fallback</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if item.visto == 1 %}
+                                <span class="badge badge-done">✓ Consumido</span>
+                            {% elif item.reproducido == 1 %}
+                                <span class="badge badge-playing">📺 Emitiéndose</span>
+                            {% else %}
+                                <span class="badge badge-pending">⏳ Pendiente</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary font-monospace-custom">{{ item.dominio }}</span>
+                        </td>
+                        <td class="text-center">
+                            <a href="/delete/{{ item.id }}" class="btn btn-neon-cancel btn-sm px-3">Eliminar</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Formateador de segundos de duración a formato legible (MM:SS o HH:MM:SS)
+        function formatDurations() {
+            document.querySelectorAll('.js-duration').forEach(el => {
+                const totalSeconds = parseInt(el.getAttribute('data-seconds'), 10) || 0;
+                if (totalSeconds === 0) {
+                    el.innerText = "Calculando...";
+                    return;
+                }
+                const hrs = Math.floor(totalSeconds / 3600);
+                const mins = Math.floor((totalSeconds % 3600) / 60);
+                const secs = totalSeconds % 60;
+                
+                if (hrs > 0) {
+                    el.innerText = `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                } else {
+                    el.innerText = `${mins}:${secs.toString().padStart(2, '0')}`;
+                }
+            });
+        }
+
+        window.onload = formatDurations;
+    </script>
+</body>
+</html>
