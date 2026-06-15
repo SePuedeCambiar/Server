@@ -6,9 +6,7 @@ const Database = require('better-sqlite3');
 // ============================================================================
 // 1. CONFIGURACIÓN DE BASE DE DATOS Y ESTADO (RUTAS DINÁMICAS ABSOLUTAS)
 // ============================================================================
-// Subimos dos niveles para llegar al root: src/bot -> src -> root
 const ROOT_DIR = path.resolve(__dirname, '..', '..');
-
 const DB_PATH = path.join(ROOT_DIR, 'data', 'playlist.db');
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
@@ -19,32 +17,15 @@ const MODO_INVISIBLE = false;
 global.videoCapturado = null;
 global.currentMainPage = null;
 
-/**
- * Escribe el estado actual del bot en el archivo JSON para que el Panel Web lo lea
- */
 async function enviarEstado(estado, datos = {}) {
-    const payload = {
-        estado,
-        ...datos,
-        timestamp: new Date().toISOString()
-    };
-    try {
-        fs.writeFileSync(STATE_FILE, JSON.stringify(payload, null, 2));
-    } catch (e) {
-        console.error("Error escribiendo estado:", e);
-    }
+    const payload = { estado, ...datos, timestamp: new Date().toISOString() };
+    try { fs.writeFileSync(STATE_FILE, JSON.stringify(payload, null, 2)); } 
+    catch (e) { console.error("Error escribiendo estado:", e); }
 }
 
-/**
- * Detiene el bot y espera a que el usuario responda a través del Panel Web
- */
 async function esperarRespuesta(estado, preguntaTexto, datosExtra = {}) {
     console.log(`⏳ [Web-Bridge] Esperando respuesta para: ${preguntaTexto}`);
-    await enviarEstado(estado, {
-        pregunta: preguntaTexto,
-        waiting: true,
-        ...datosExtra
-    });
+    await enviarEstado(estado, { pregunta: preguntaTexto, waiting: true, ...datosExtra });
 
     return new Promise((resolve) => {
         const interval = setInterval(() => {
@@ -65,7 +46,7 @@ async function esperarRespuesta(estado, preguntaTexto, datosExtra = {}) {
 }
 
 // ============================================================================
-// 2. FUNCIONES DE SOPORTE, NAVEGACIÓN Y ABORTO (ASAP)
+// 2. FUNCIONES DE SOPORTE Y NAVEGACIÓN
 // ============================================================================
 
 function cargarRecetaPorDominio(dominioBuscado) {
@@ -79,36 +60,21 @@ function cargarRecetaPorDominio(dominioBuscado) {
     return null;
 }
 
-// ============================================================================
-// SISTEMA DE CONTROL DE PESTAÑAS (ANTI POPUPS DE PUBLICIDAD)
-// ============================================================================
 function blindarNavegador(browser, mainPage) {
     global.currentMainPage = mainPage;
-
-    mainPage.evaluateOnNewDocument(() => {
-        window.open = () => {
-            console.log("🚫 [Blindaje] Ventana emergente bloqueada.");
-            return null;
-        };
-    });
-
+    mainPage.evaluateOnNewDocument(() => { window.open = () => null; });
     browser.on('targetcreated', async (target) => {
         if (target.type() === 'page') {
             const page = await target.page();
-            if (page && page !== global.currentMainPage) {
-                await page.close().catch(() => {});
-            }
+            if (page && page !== global.currentMainPage) await page.close().catch(() => {});
         }
     });
 }
 
-// ============================================================================
-// ESPERA DETERMINISTA DE IFRAMES EXTERNOS (LIBRE DE RESTRICCIONES CORS)
-// ============================================================================
 async function esperarIFramesExternos(page) {
-    console.log("⏳ Esperando que el reproductor inyecte el iframe de video externo...");
+    console.log("⏳ Esperando inyección del reproductor externo...");
     const start = Date.now();
-    while (Date.now() - start < 8000) {
+    while (Date.now() - start < 10000) {
         const frames = page.frames();
         const tieneHostExterno = frames.some(f => {
             try {
@@ -116,24 +82,15 @@ async function esperarIFramesExternos(page) {
                 return urlStr && !urlStr.includes('about:blank') && !urlStr.includes('cuevana') && !urlStr.includes('jkanime');
             } catch(e) { return false; }
         });
-
-        if (tieneHostExterno) {
-            console.log(`🎯 ¡Iframe del servidor de video detectado tras ${Date.now() - start}ms!`);
-            return true;
-        }
-        await new Promise(r => setTimeout(r, 400));
+        if (tieneHostExterno) return true;
+        await new Promise(r => setTimeout(r, 500));
     }
-    console.log("⚠️ No se detectaron iframes externos a tiempo. Continuando con análisis...");
     return false;
 }
 
-// ============================================================================
-// DETECTOR Y SONDEADOR DE LATENCIA DEL CDN DE VIDEO REAL (PROTOCOL-LEVEL)
-// ============================================================================
 async function medirLatenciaHost(page) {
     const frames = page.frames();
     let targetHost = null;
-
     for (const frame of frames) {
         try {
             const urlStr = frame.url();
@@ -149,85 +106,38 @@ async function medirLatenciaHost(page) {
             }
         } catch (e) {}
     }
-
-    if (!targetHost) {
-        console.log("⚠️ No se detectó un host externo explícito por tamaño. Usando fallback de 800ms.");
-        return 800;
-    }
-
-    console.log(`⚡ Servidor de video activo: [${targetHost}]. Midiendo latencia directa...`);
+    if (!targetHost) return 800;
     const rttHost = await page.evaluate(async (host) => {
         const start = Date.now();
         try {
             await fetch(`https://${host}/favicon.ico`, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
             return Date.now() - start;
-        } catch (e) {
-            try {
-                await fetch(`https://${host}`, { method: 'GET', mode: 'no-cors', cache: 'no-store' });
-                return Date.now() - start;
-            } catch (err) {
-                return 1000;
-            }
-        }
+        } catch (e) { return 800; }
     }, targetHost);
-
-    console.log(`📡 Latencia directa con el servidor de video [${targetHost}]: ${rttHost}ms`);
     return rttHost;
 }
 
-/**
- * Bypass de Cloudflare
- */
 async function esperarBypass(page, maxIntentos = 30) {
-    console.log("🛡️ Verificando estado del bypass...");
-    await new Promise(r => setTimeout(r, 1500));
     for (let i = 1; i <= maxIntentos; i++) {
         try {
-            const url = page.url();
-            if (url === 'about:blank' || url.trim().length < 10) {
-                await new Promise(r => setTimeout(r, 1000));
-                continue;
-            }
-
             const titulo = await page.title().catch(() => '');
-            let esDesafio = titulo.toLowerCase().includes('just a moment') ||
-                            url.includes('challenges.cloudflare.com') ||
-                            titulo.toLowerCase().includes('verificando que eres humano');
-            if (!esDesafio) {
-                const contenido = await page.content();
-                if (contenido.includes('cf-challenge') || contenido.includes('turnstile')) esDesafio = true;
-            }
-            if (esDesafio) {
-                console.log(`⏳ [${i}/${maxIntentos}] Resolviendo escudo...`);
-                await new Promise(r => setTimeout(r, 3000));
-            } else {
-                console.log("✅ Bypass completado.");
-                return true;
-            }
-        } catch (e) { await new Promise(r => setTimeout(r, 1000)); }
+            if (!titulo.toLowerCase().includes('just a moment') && !page.url().includes('challenges.cloudflare.com')) return true;
+            await new Promise(r => setTimeout(r, 3000));
+        } catch (e) {}
     }
     return false;
 }
 
-/**
- * Función asíncrona inteligente para realizar la carga ASAP y abortar red basura
- */
 async function navegarYAbortar(page, url, selector, esPaginaCritica = false) {
     try {
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        // Usamos networkidle2 para asegurar que los iframes se inyecten
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
         if (esPaginaCritica) {
-            await page.waitForSelector(selector, { timeout: 12000 });
+            await page.waitForSelector(selector, { timeout: 15000 });
             return;
         }
-
-        const currentUrl = page.url();
-        const titulo = await page.title().catch(() => '');
-        const esCF = titulo.toLowerCase().includes('just a moment') || currentUrl.includes('challenges.cloudflare.com');
-        if (!esCF) {
-            await page.waitForSelector(selector, { timeout: 10000 });
-            await page.evaluate(() => window.stop()).catch(() => {});
-            console.log("🛑 [ASAP] Carga de página abortada para ahorrar recursos.");
-        }
+        await page.waitForSelector(selector, { timeout: 10000 }).catch(() => {});
+        await page.evaluate(() => window.stop()).catch(() => {});
     } catch (e) {}
 }
 
@@ -250,56 +160,70 @@ function generarUrlEpisodio(showUrl, capitulo, receta) {
 }
 
 // ============================================================================
-// EXTRACCIÓN SANDBOX CON FORMULA DE CUELLO DE BOTELLA FÍSICO
+// EXTRACCIÓN PROFUNDA (Deep-Injection Sandbox)
 // ============================================================================
 async function activarVideoSandbox(page, rttHost, cpuScore) {
-    console.log("\n🎬 Iniciando Extracción Sandbox...");
-    const playSelectors = ['.vjs-big-play-button', '.play-button', '.btn-play', '[class*="play"]', 'video', '.video-play', '.jw-icon-display', '.plyr__control--overlaid'];
+    console.log("\n🎬 Iniciando Extracción Profunda...");
+    const playSelectors = ['.vjs-big-play-button', '.play-button', '.btn-play', '[class*="play"]', 'video', '.jw-icon-display', '.plyr__control--overlaid'];
     const startTime = Date.now();
     const factorExponencial = 1.15 + (cpuScore * 0.05); 
     const baseDelay = rttHost ? Math.max(2500, Math.min(8000, 2500 + (rttHost * cpuScore))) : 2000;
     let k = 0;
+
     while (Date.now() - startTime < 60000) {
         if (global.videoCapturado) return true;
         try {
-            await page.evaluate(() => {
-                document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2)?.click();
-            });
-
-            const estadoBuffer = await page.evaluate(() => {
-                const v = document.querySelector('video');
-                return v ? { ready: v.readyState >= 1, playing: !v.paused } : { ready: false, playing: false };
-            });
-
             const frames = page.frames();
             for (const frame of frames) {
                 try {
                     if (frame.url().includes('about:blank')) continue;
+
+                    // 1. Intentar extraer src directo del <video>
                     const src = await frame.evaluate(() => {
-                        const vid = document.querySelector('video'); return vid ? vid.src : null;
+                        const v = document.querySelector('video');
+                        return v ? v.src : null;
                     });
                     if (src && (src.includes('.m3u8') || src.includes('.mp4')) && !src.startsWith('blob:')) {
                         global.videoCapturado = src;
                         return true;
                     }
+
+                    // 2. Inyección de JS: Forzar Play + Mute + Click en el Body del Frame
+                    await frame.evaluate(() => {
+                        document.querySelectorAll('video').forEach(v => {
+                            v.muted = true;
+                            v.play().catch(() => {});
+                        });
+                        const body = document.body;
+                        if (body) {
+                            const event = new MouseEvent('click', {
+                                view: window, bubbles: true, cancelable: true,
+                                clientX: window.innerWidth / 2, clientY: window.innerHeight / 2
+                            });
+                            body.dispatchEvent(event);
+                        }
+                    });
+
+                    // 3. Clics en selectores de Play dentro del frame
                     for (const selector of playSelectors) {
-                        const el = await frame.$(selector);
-                        if (el) await frame.evaluate((sel) => { document.querySelector(sel)?.click(); }, selector);
+                        try {
+                            const el = await frame.$(selector);
+                            if (el) {
+                                await el.click();
+                                await new Promise(r => setTimeout(r, 500));
+                            }
+                        } catch (e) {}
                     }
                 } catch (e) {}
             }
 
-            if (estadoBuffer.ready || global.videoCapturado) {
-                console.log("⚡ ¡Video o buffer detectado! Extracción completada.");
-                break;
-            } else {
-                let waitTime = rttHost ? Math.round(baseDelay * Math.pow(factorExponencial, k)) : 2000;
-                waitTime = Math.min(10000, waitTime);
+            if (global.videoCapturado) break;
 
-                console.log(`⏳ Ciclo #${k} - Espera: ${waitTime}ms (factor: ${factorExponencial.toFixed(2)})`);
-                await new Promise(r => setTimeout(r, waitTime));
-                k++;
-            }
+            let waitTime = rttHost ? Math.round(baseDelay * Math.pow(factorExponencial, k)) : 2000;
+            waitTime = Math.min(10000, waitTime);
+            console.log(`⏳ Ciclo #${k} - Espera: ${waitTime}ms`);
+            await new Promise(r => setTimeout(r, waitTime));
+            k++;
         } catch (e) {}
     }
     return !!global.videoCapturado;
@@ -315,7 +239,7 @@ async function main() {
     const ARG_HORA = args.find(arg => arg.startsWith('--hora='))?.split('=')[1] || null;
 
     if (!ARG_DOMINIO || !ARG_KEYWORD) {
-        console.error("❌ Argumentos faltantes. Uso: node reproductor.js --dominio=x --keyword=y");
+        console.error("❌ Argumentos faltantes.");
         process.exit(1);
     }
 
@@ -325,20 +249,12 @@ async function main() {
     const cpuScore = Math.max(1.0, cpuTime / 15);
 
     console.log("======================================================");
-    console.log(`🤖 BOT INTERACTIVO | Buscando: ${ARG_KEYWORD} en ${ARG_DOMINIO}`);
-    console.log(`🖥️  Hardware Profile Score: CPU ${cpuScore.toFixed(2)}x (${cpuTime}ms)`);
+    console.log(`🤖 BOT INTERACTIVO | ${ARG_KEYWORD} en ${ARG_DOMINIO}`);
     console.log("======================================================");
 
     const { browser, page } = await connect({
         headless: MODO_INVISIBLE,
-        args: [
-            "--start-maximized",
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",         
-            "--disable-accelerated-2d-canvas",
-            "--disable-gpu"                    
-        ],
+        args: ["--start-maximized", "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
         turnstile: true,
         connectOption: { defaultViewport: null }
     });
@@ -347,23 +263,16 @@ async function main() {
     page.setDefaultNavigationTimeout(90000);
 
     await page.setRequestInterception(true);
-    let peticionesBloqueadas = 0;
     page.on('request', (req) => {
-        const type = req.resourceType();
         const url = req.url().toLowerCase();
-        if (url.includes('cloudflare') || url.includes('challenges') || url.includes('captcha') || url.includes('turnstile')) {
+        const type = req.resourceType();
+        // FILTRO QUIRÚRGICO: Permitir siempre el flujo de video
+        if (url.includes('.m3u8') || url.includes('.mp4') || url.includes('.ts') || url.includes('manifest')) {
             return req.continue();
         }
-        if (['image', 'font', 'media'].includes(type)) {
-            peticionesBloqueadas++;
-            return req.abort();
-        }
-        const esAnuncioOTracker = ['1xbet', 'popads', 'doubleclick', 'google-analytics', 'googletagmanager', 'gtag', 'onclickads', 'facebook', 'exoclick', 'juicyads', 'a-ads', 'coinad', 'histats', 'adskeeper', 'mgid', 'analytics', 'telemetry', 'tracker', 'anisabi.com'].some(keyword => url.includes(keyword));
-
-        if (esAnuncioOTracker && ['script', 'xhr', 'fetch', 'other'].includes(type)) {
-            peticionesBloqueadas++;
-            return req.abort();
-        }
+        if (url.includes('cloudflare') || url.includes('challenges')) return req.continue();
+        if (['image', 'font'].includes(type)) return req.abort();
+        if (['1xbet', 'popads', 'doubleclick', 'google-analytics'].some(k => url.includes(k))) return req.abort();
         req.continue();
     });
 
@@ -390,7 +299,6 @@ async function main() {
         }
 
         if (searchUrl) {
-            console.log(`📡 Navegando directamente a la búsqueda: ${searchUrl}`);
             await navegarYAbortar(page, searchUrl, 'a', true);
         } else {
             const initSelector = receta.searchSelector || 'input[type="search"], input[name="q"], #search';
@@ -404,15 +312,11 @@ async function main() {
             }, ARG_KEYWORD);
 
             const subSelector = receta.submitSelector || 'button[type="submit"], input[type="submit"], .search-submit';
-            try {
-                await page.click(subSelector);
-            } catch (e) {
-                await page.$eval(sSelector, (el) => el.closest('form')?.submit());
-            }  
+            try { await page.click(subSelector); } catch (e) { await page.$eval(sSelector, (el) => el.closest('form')?.submit()); }
         }
         await esperarBypass(page);
 
-        console.log("⏳ Esperando que se rendericen los resultados en el DOM...");
+        console.log("⏳ Esperando resultados...");
         let enlaces = [];
         for (let i = 0; i < 5; i++) {
             enlaces = await page.evaluate((kw) => {
@@ -422,11 +326,10 @@ async function main() {
                     .map(a => ({ href: a.href, text: a.innerText.trim() }))
                     .filter(e => normalizar(e.text).includes(kwNormalizado) && e.href.length > 10);
             }, ARG_KEYWORD);
-
             if (enlaces.length > 0) break;
             await new Promise(r => setTimeout(r, 2000));
         }
-        if (enlaces.length === 0) throw new Error("No se encontraron resultados en la página.");
+        if (enlaces.length === 0) throw new Error("No se encontraron resultados.");
 
         const seleccionIdx = parseInt(await esperarRespuesta('SELECT_SHOW', "Selecciona el show", { resultados: enlaces })) - 1;
         const show = enlaces[seleccionIdx] || enlaces[0];
@@ -448,7 +351,6 @@ async function main() {
                 const m = text.match(/Episodios:\s*(\d+)/i);
                 return m ? parseInt(m[1], 10) : null;
             });
-
             const ep = await esperarRespuesta('SELECT_EPISODE', `Capítulo (1 al ${totalEpisodios || '?'})`, { total: totalEpisodios });
             capituloElegido = parseInt(ep, 10) || 1;
             targetUrl = generarUrlEpisodio(urlBaseFinal, capituloElegido, receta);
@@ -465,15 +367,9 @@ async function main() {
             servers: Array.from(document.querySelectorAll('li[role="presentation"], .server-item')).map(el => el.innerText.trim())
         }));
 
-        if (diag.hasPlay) {
-            console.log("👆 Haciendo click inicial para forzar inyección...");
-            await clickInteligente(page, '.video-play');
-        }
+        if (diag.hasPlay) await clickInteligente(page, '.video-play');
         if (diag.servers.length > 0) {
-            console.log("👆 Seleccionando servidor primario...");
-            await page.evaluate(() => {
-                document.querySelector('li[role="presentation"], .server-item')?.click();
-            });
+            await page.evaluate(() => { document.querySelector('li[role="presentation"], .server-item')?.click(); });
             await new Promise(r => setTimeout(r, 1500));
         }
 
@@ -488,7 +384,7 @@ async function main() {
             insert.run(ARG_KEYWORD, clasificacionFinal, capituloElegido, global.videoCapturado, urlBaseFinal, ARG_DOMINIO, ARG_HORA);
             await enviarEstado('IDLE', { message: '¡Contenido guardado con éxito!' });
         } else {
-            throw new Error("No se pudo capturar la URL del stream después de intentar el modo agresivo.");
+            throw new Error("No se pudo capturar la URL del stream.");
         }
 
     } catch (e) {
@@ -499,4 +395,4 @@ async function main() {
     }
 }
 
-main();
+main(); 

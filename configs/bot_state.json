@@ -1,12 +1,5 @@
 {
-  "estado": "SELECT_SHOW",
-  "pregunta": "Selecciona el show",
-  "waiting": true,
-  "resultados": [
-    {
-      "href": "https://cuevana3.you/pelicula/el-halcon-maltes",
-      "text": "1941\n\nEl halcón maltés"
-    }
-  ],
-  "timestamp": "2026-06-15T17:38:07.417Z"
+  "estado": "ERROR",
+  "message": "No se pudo capturar la URL del stream después de intentar el modo agresivo.",
+  "timestamp": "2026-06-15T17:50:03.425Z"
 }
