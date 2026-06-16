@@ -1,8 +1,13 @@
 # Emisor
 Este prograba busca ayudar a obtener contenido y automatizar su reproducion usando un strem para poder enviar contenido en tiempo real.
 Para hacer funcionar este programa se debe usar los siguientes comandos
+
+
 git clone https://github.com/SePuedeCambiar/Server.git
+
+
 cd Server
+
 
 docker compose up -d --build
 
