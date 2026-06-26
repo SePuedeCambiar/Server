@@ -1,0 +1,583 @@
+[
+  {
+    "attempt": 1,
+    "exito": true,
+    "duracion": 11.216,
+    "url": "https://tiktokshopping.xyz/stream/Ol3Wrt6h4Me0uRRARu4JOA/hjkrhuihghfvu/1782459145/30376983/index-f1-v1-a1.m3u8",
+    "detalles": [
+      {
+        "toque": 0,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 0,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 1,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 1,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 2,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 2,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 3,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 3,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 4,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 4,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      }
+    ]
+  },
+  {
+    "attempt": 2,
+    "exito": true,
+    "duracion": 3.868,
+    "url": "https://tiktokshopping.xyz/stream/nifKpGzaJ0pHBdG78Jil2w/hjkrhuihghfvu/1782459155/30376983/master.m3u8",
+    "detalles": [
+      {
+        "toque": 0,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 0,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 1,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 1,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      }
+    ]
+  },
+  {
+    "attempt": 3,
+    "exito": true,
+    "duracion": 6.134,
+    "url": "https://tiktokshopping.xyz/stream/DB5PH0awSaO3TSetxwdMjA/hjkrhuihghfvu/1782459163/30376983/master.m3u8",
+    "detalles": [
+      {
+        "toque": 0,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 0,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 1,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 1,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 2,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 2,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      }
+    ]
+  },
+  {
+    "attempt": 4,
+    "exito": true,
+    "duracion": 6.103,
+    "url": "https://tiktokshopping.xyz/stream/SyFIAhvEqX3gjWibhhrVlQ/hjkrhuihghfvu/1782459174/30376983/master.m3u8",
+    "detalles": [
+      {
+        "toque": 0,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 0,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 1,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 1,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 2,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 2,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      }
+    ]
+  },
+  {
+    "attempt": 5,
+    "exito": true,
+    "duracion": 6.096,
+    "url": "https://tiktokshopping.xyz/stream/PjT8dddkUl3bXNpoN_Ir-Q/hjkrhuihghfvu/1782459183/30376983/master.m3u8",
+    "detalles": [
+      {
+        "toque": 0,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 0,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 1,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 1,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 2,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 2,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      }
+    ]
+  },
+  {
+    "attempt": 6,
+    "exito": true,
+    "duracion": 3.866,
+    "url": "https://tiktokshopping.xyz/stream/NFvagsQRsXGTuxaD8J01Lw/hjkrhuihghfvu/1782459192/30376983/master.m3u8",
+    "detalles": [
+      {
+        "toque": 0,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 0,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 1,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 1,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      }
+    ]
+  },
+  {
+    "attempt": 7,
+    "exito": true,
+    "duracion": 0,
+    "url": "https://tiktokshopping.xyz/stream/NFvagsQRsXGTuxaD8J01Lw/hjkrhuihghfvu/1782459192/30376983/master.m3u8",
+    "detalles": []
+  },
+  {
+    "attempt": 8,
+    "exito": true,
+    "duracion": 6.13,
+    "url": "https://tiktokshopping.xyz/stream/1hy_-66fHT1d5h0sngv5EA/hjkrhuihghfvu/1782459205/30376983/master.m3u8",
+    "detalles": [
+      {
+        "toque": 0,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 0,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 1,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 1,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 2,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 2,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      }
+    ]
+  },
+  {
+    "attempt": 9,
+    "exito": true,
+    "duracion": 6.112,
+    "url": "https://tiktokshopping.xyz/stream/MoUoMUT-X2bpzeT6X03AeQ/hjkrhuihghfvu/1782459216/30376983/master.m3u8",
+    "detalles": [
+      {
+        "toque": 0,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 0,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 1,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 1,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 2,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 2,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      }
+    ]
+  },
+  {
+    "attempt": 10,
+    "exito": true,
+    "duracion": 6.096,
+    "url": "https://tiktokshopping.xyz/stream/nM-FlNBLr_bUeRY04bIDsQ/hjkrhuihghfvu/1782459227/30376983/master.m3u8",
+    "detalles": [
+      {
+        "toque": 0,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 0,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 1,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 1,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 2,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 2,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      }
+    ]
+  },
+  {
+    "attempt": 11,
+    "exito": true,
+    "duracion": 3.88,
+    "url": "https://tiktokshopping.xyz/stream/fwSX7goRkv4k-2BmlYv-8g/hjkrhuihghfvu/1782459239/30376983/master.m3u8",
+    "detalles": [
+      {
+        "toque": 0,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 0,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 1,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 1,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      }
+    ]
+  },
+  {
+    "attempt": 12,
+    "exito": true,
+    "duracion": 6.126,
+    "url": "https://tiktokshopping.xyz/stream/hIC0R5Ab5wNXdx_ijvZ2Dw/hjkrhuihghfvu/1782459248/30376983/master.m3u8",
+    "detalles": [
+      {
+        "toque": 0,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 0,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 1,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 1,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 2,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 2,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      }
+    ]
+  },
+  {
+    "attempt": 13,
+    "exito": true,
+    "duracion": 3.872,
+    "url": "https://tiktokshopping.xyz/stream/2587W27rT_KwmuKYpYRneQ/hjkrhuihghfvu/1782459258/30376983/master.m3u8",
+    "detalles": [
+      {
+        "toque": 0,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 0,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 1,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 1,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      }
+    ]
+  },
+  {
+    "attempt": 14,
+    "exito": true,
+    "duracion": 6.108,
+    "url": "https://tiktokshopping.xyz/stream/KBoBeUnuWry0pD6FTSVzyQ/hjkrhuihghfvu/1782459265/30376983/master.m3u8",
+    "detalles": [
+      {
+        "toque": 0,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 0,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 1,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 1,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 2,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 2,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      }
+    ]
+  },
+  {
+    "attempt": 15,
+    "exito": true,
+    "duracion": 11.208,
+    "url": "https://tiktokshopping.xyz/stream/zBZj3yhmn-L-v9BvvZYcBg/hjkrhuihghfvu/1782459283/30376983/index-f1-v1-a1.m3u8",
+    "detalles": [
+      {
+        "toque": 0,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 0,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 1,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 1,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 2,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 2,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 3,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 3,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      },
+      {
+        "toque": 4,
+        "metodo": "JSInjection",
+        "status": "TRIED"
+      },
+      {
+        "toque": 4,
+        "metodo": "SelectorClick",
+        "selector": "[class*=\"play\"]",
+        "status": "CLICKED"
+      }
+    ]
+  }
+]

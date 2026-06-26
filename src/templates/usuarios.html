@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Usuarios - TV Orchestrator</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #070708;
+            --card-bg: #0f0f12;
+            --neon-purple: #bc13fe;
+            --neon-blue: #00d2ff;
+            --border-color: #1f1f2e;
+            --text-gray: #8f8f9d;
+        }
+        body {
+            background-color: var(--bg-dark);
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+        }
+        .glass-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        }
+        .form-control, .form-select {
+            background-color: #161622 !important;
+            border: 1px solid var(--border-color) !important;
+            color: white !important;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: var(--neon-purple) !important;
+            box-shadow: 0 0 0 0.25rem rgba(188, 19, 254, 0.25) !important;
+        }
+        .table-dark {
+            --bs-table-bg: #0c0c0f;
+            border-color: var(--border-color);
+        }
+        .btn-neon {
+            background: var(--neon-purple);
+            color: white;
+            border: none;
+            font-weight: 600;
+        }
+        .btn-neon:hover {
+            background: #9d0edb;
+            box-shadow: 0 0 15px var(--neon-purple);
+            color: white;
+        }
+    </style>
+</head>
+<body class="container py-5">
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="fw-bold m-0 text-white">🔑 Control de Usuarios</h1>
+        <p class="text-muted m-0">Administra quién puede añadir contenido o ver la señal.</p>
+    </div>
+    <a href="/" class="btn btn-outline-secondary py-2 px-4">⬅️ Volver al panel</a>
+</div>
+
+<div class="row g-4">
+    <!-- CREAR USUARIO -->
+    <div class="col-md-4">
+        <div class="glass-card p-4">
+            <h4 class="mb-3 text-info">Añadir Usuario</h4>
+            <form action="/admin/usuarios/crear" method="POST">
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Nombre de Usuario</label>
+                    <input type="text" name="username" class="form-control" required placeholder="User">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Contraseña</label>
+                    <input type="password" name="password" class="form-control" required placeholder="••••••••">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Rol en el Sistema</label>
+                    <select name="rol" class="form-select">
+                        <option value="viewer">Viewer (Solo Lectura/Streaming)</option>
+                        <option value="admin">Admin (Control Total)</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-neon w-100 py-2 mt-2">Crear Cuenta</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- LISTADO -->
+    <div class="col-md-8">
+        <div class="glass-card p-4">
+            <h4 class="mb-3 text-white">Usuarios Activos</h4>
+            <div class="table-responsive">
+                <table class="table table-dark table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Usuario</th>
+                            <th>Rol</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in usuarios %}
+                        <tr>
+                            <td>{{ u.id }}</td>
+                            <td class="fw-bold">{{ u.username }}</td>
+                            <td>
+                                {% if u.rol == 'admin' %}
+                                <span class="badge bg-danger">Administrador</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Espectador</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if u.username != current_user.username %}
+                                <a href="/admin/usuarios/eliminar/{{ u.id }}" class="btn btn-sm btn-outline-danger px-3" onclick="return confirm('¿Seguro de eliminar este usuario?')">Eliminar</a>
+                                {% else %}
+                                <span class="text-muted small italic">Tú (Sesión activa)</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso | TV Orchestrator</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #070708;
+            --card-bg: #0f0f12;
+            --neon-purple: #bc13fe;
+            --neon-blue: #00d2ff;
+            --border-color: #1f1f2e;
+        }
+        body {
+            background-color: var(--bg-dark);
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(188, 19, 254, 0.15);
+            max-width: 420px;
+            width: 100%;
+            padding: 40px;
+        }
+        .brand-title {
+            font-weight: 800;
+            background: linear-gradient(to right, #ffffff, var(--neon-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+            letter-spacing: 1px;
+            font-size: 1.8rem;
+        }
+        .form-control {
+            background-color: #161622 !important;
+            border: 1px solid var(--border-color) !important;
+            color: white !important;
+            padding: 12px;
+        }
+        .form-control:focus {
+            border-color: var(--neon-purple) !important;
+            box-shadow: 0 0 10px rgba(188, 19, 254, 0.4) !important;
+        }
+        .btn-neon {
+            background: var(--neon-purple);
+            color: white;
+            border: none;
+            font-weight: 600;
+            padding: 12px;
+            transition: 0.3s;
+        }
+        .btn-neon:hover {
+            background: #9d0edb;
+            box-shadow: 0 0 20px var(--neon-purple);
+            color: white;
+        }
+        .error-alert {
+            background: rgba(220, 53, 69, 0.15);
+            border: 1px solid #dc3545;
+            color: #ff6b7d;
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="login-card">
+    <div class="text-center mb-4">
+        <h2 class="brand-title">TV ORCHESTRATOR</h2>
+        <p class="text-muted small">Ingresa tus credenciales para acceder al panel</p>
+    </div>
+
+    <div id="alertContainer" class="mb-3 d-none">
+        <div class="error-alert" id="errorMessage"></div>
+    </div>
+
+    <form action="/login" method="POST">
+        <div class="mb-3">
+            <label class="form-label text-muted small fw-bold">USUARIO</label>
+            <input type="text" name="username" class="form-control" placeholder="Admin" required autocomplete="off">
+        </div>
+        <div class="mb-4">
+            <label class="form-label text-muted small fw-bold">CONTRASEÑA</label>
+            <input type="password" name="password" class="form-control" placeholder="••••••••" required>
+        </div>
+        <button type="submit" class="btn btn-neon w-100 rounded-pill">Iniciar Sesión</button>
+    </form>
+</div>
+
+<script>
+    // Procesar parámetros de error
+    const urlParams = new URLSearchParams(window.location.search);
+    const errorType = urlParams.get('error');
+    if(errorType) {
+        const container = document.getElementById('alertContainer');
+        const message = document.getElementById('errorMessage');
+        container.classList.remove('d-none');
+        if(errorType === 'credenciales_invalidas') {
+            message.innerText = "❌ Credenciales incorrectas. Intenta de nuevo.";
+        } else if(errorType === 'error_db') {
+            message.innerText = "❌ Error en conexión de base de datos.";
+        }
+    }
+</script>
+</body>
+</html>
