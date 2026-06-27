@@ -1,420 +1,459 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TV Orchestrator | Control Center</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-<style>
-:root {
---bg-dark: #070708;
---card-bg: #0f0f12;
---neon-purple: #bc13fe;
---neon-blue: #00d2ff;
---neon-green: #39ff14;
---text-gray: #8f8f9d;
---border-color: #1f1f2e;
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TV Orchestrator | Control Center</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #070708;
+            --card-bg: #0f0f12;
+            --neon-purple: #bc13fe;
+            --neon-blue: #00d2ff;
+            --neon-green: #39ff14;
+            --text-gray: #8f8f9d;
+            --border-color: #1f1f2e;
         }
-body {
-background-color: var(--bg-dark);
-color: #ffffff;
-font-family: 'Inter', sans-serif;
+        body {
+            background-color: var(--bg-dark);
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
         }
-.glass-card {
-background: var(--card-bg);
-border: 1px solid var(--border-color);
-border-radius: 16px;
-box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        .glass-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
         }
-.live-banner {
-background: linear-gradient(90deg, #ff0055, var(--neon-purple));
-border-radius: 12px;
-padding: 14px;
-text-align: center;
-font-weight: 800;
-margin-bottom: 25px;
-animation: pulse 2.5s infinite;
-color: white;
-text-transform: uppercase;
-letter-spacing: 1.5px;
-box-shadow: 0 0 20px rgba(188, 19, 254, 0.3);
+        .live-banner {
+            background: linear-gradient(90deg, #ff0055, var(--neon-purple));
+            border-radius: 12px;
+            padding: 14px;
+            text-align: center;
+            font-weight: 800;
+            margin-bottom: 25px;
+            animation: pulse 2.5s infinite;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            box-shadow: 0 0 20px rgba(188, 19, 254, 0.3);
         }
-@keyframes pulse {
+        @keyframes pulse {
             0% { opacity: 0.9; transform: scale(1); }
             50% { opacity: 1; transform: scale(1.005); }
             100% { opacity: 0.9; transform: scale(1); }
         }
-.btn-neon {
-background: var(--neon-purple);
-color: white;
-border: none;
-font-weight: 600;
-transition: 0.3s;
+        .btn-neon {
+            background: var(--neon-purple);
+            color: white;
+            border: none;
+            font-weight: 600;
+            transition: 0.3s;
         }
-.btn-neon:hover {
-background: #9d0edb;
-color: white;
-box-shadow: 0 0 15px var(--neon-purple);
-transform: translateY(-1px);
+        .btn-neon:hover {
+            background: #9d0edb;
+            color: white;
+            box-shadow: 0 0 15px var(--neon-purple);
+            transform: translateY(-1px);
         }
-.form-control, .form-select {
-background-color: #161622 !important;
-border: 1px solid var(--border-color) !important;
-color: white !important;
+        .form-control, .form-select {
+            background-color: #161622 !important;
+            border: 1px solid var(--border-color) !important;
+            color: white !important;
         }
-.form-control:focus, .form-select:focus {
-border-color: var(--neon-purple) !important;
-box-shadow: 0 0 0 0.25rem rgba(188, 19, 254, 0.25) !important;
+        .form-control:focus, .form-select:focus {
+            border-color: var(--neon-purple) !important;
+            box-shadow: 0 0 0 0.25rem rgba(188, 19, 254, 0.25) !important;
         }
-.table-dark {
---bs-table-bg: #0c0c0f;
-border-color: var(--border-color);
+        .table-dark {
+            --bs-table-bg: #0c0c0f;
+            border-color: var(--border-color);
         }
-.badge-scheduled { background-color: #ffc107; color: black; font-weight: 700; }
-.badge-queue { background-color: #3d3d4d; color: #d1d1e0; }
-.badge-visto { background-color: rgba(57, 255, 20, 0.15); color: var(--neon-green); border: 1px solid var(--neon-green); }
-.badge-pendiente { background-color: rgba(255, 193, 7, 0.15); color: #ffc107; border: 1px solid #ffc107; }
-.header-title {
-font-weight: 800;
-font-size: 2.5rem;
-text-align: center;
-background: linear-gradient(to right, #ffffff, var(--neon-blue));
--webkit-background-clip: text;
--webkit-text-fill-color: transparent;
-letter-spacing: 2px;
+        .badge-scheduled { background-color: #ffc107; color: black; font-weight: 700; }
+        .badge-queue { background-color: #3d3d4d; color: #d1d1e0; }
+        .badge-visto { background-color: rgba(57, 255, 20, 0.15); color: var(--neon-green); border: 1px solid var(--neon-green); }
+        .badge-pendiente { background-color: rgba(255, 193, 7, 0.15); color: #ffc107; border: 1px solid #ffc107; }
+        .header-title {
+            font-weight: 800;
+            font-size: 2.5rem;
+            text-align: center;
+            margin-bottom: 30px;
+            background: linear-gradient(to right, #ffffff, var(--neon-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: 2px;
         }
-.text-muted-custom {
-color: var(--text-gray);
+        .text-muted-custom {
+            color: var(--text-gray);
         }
-</style>
+        .session-bar {
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1rem;
+            margin-bottom: 2rem;
+        }
+    </style>
 </head>
 <body class="container py-5">
 
-<!-- BARRA SUPERIOR DE SESIÓN -->
-<div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom border-secondary">
+<!-- BARRA DE SESIÓN -->
+<div class="d-flex justify-content-between align-items-center session-bar">
     <div>
-        <span class="text-muted-custom">Sesión iniciada: </span>
+        <span class="text-muted-custom">Operador: </span>
         <strong class="text-info">{{ user.username }}</strong>
         <span class="badge bg-secondary ms-1">{{ user.rol | upper }}</span>
     </div>
     <div>
         {% if user.rol == 'admin' %}
-        <a href="/admin/usuarios" class="btn btn-sm btn-outline-info me-2">⚙️ Gestionar Usuarios</a>
+        <a href="/admin/usuarios" class="btn btn-sm btn-outline-info me-2">⚙️ Usuarios</a>
         {% endif %}
-        <a href="/logout" class="btn btn-sm btn-outline-danger">🚪 Cerrar Sesión</a>
+        <a href="/logout" class="btn btn-sm btn-outline-danger">🚪 Salir</a>
     </div>
 </div>
 
-<h1 class="header-title mb-4">📺 TV SYSTEM ORCHESTRATOR</h1>
-  
+<h1 class="header-title">📺 TV SYSTEM ORCHESTRATOR</h1>
+
 <!-- SECCIÓN 1: ESTADO LIVE -->
 <div class="row mb-4">
-<div class="col-12">
-<div class="live-banner shadow">
-<span class="me-3">🔴 EN EMISIÓN: Canal Novela</span>
-<a id="stream-link" href="#" target="_blank" class="btn btn-sm btn-light fw-bold py-1 px-3">VER SEÑAL EN VIVO</a>
+    <div class="col-12">
+        <div class="live-banner shadow">
+            <span class="me-3">🔴 EN EMISIÓN: Canal Novela</span>
+            <a id="stream-link" href="#" target="_blank" class="btn btn-sm btn-light fw-bold py-1 px-3">VER SEÑAL EN VIVO</a>
+        </div>
+    </div>
 </div>
-</div>
-</div>
-  
+
 <div class="row g-4">
-<!-- COLUMNA IZQUIERDA: ASISTENTE DE CAPTURA Y PROGRAMACIÓN -->
-<div class="col-md-5">
-<div class="glass-card p-4 h-100">
-<h4 class="mb-4">🤖 Asistente de Captura</h4>
+    <!-- COLUMNA IZQUIERDA: ASISTENTE DE CAPTURA -->
+    <div class="col-md-5">
+        <div class="glass-card p-4 h-100">
+            <h4 class="mb-4">🤖 Asistente de Captura</h4>
+            
+            <!-- ESTADO A: Formulario de Búsqueda -->
+            <div id="initSearch">
+                <div class="mb-3">
+                    <label class="form-label text-muted-custom small fw-bold">SITIO DE EMISIÓN</label>
+                    <select id="siteSelect" class="form-select"></select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label text-muted-custom small fw-bold">BÚSQUEDA DEL CONTENIDO</label>
+                    <input type="text" id="keyword" class="form-control" placeholder="Ej: Bleach Sennen Kessen-hen">
+                </div>
 
-{% if user.rol == 'admin' %}
-<!-- ESTADO A: Inicio de Búsqueda (Solo para Administradores) -->
-<div id="initSearch">
-<div class="mb-3">
-<label class="form-label text-muted-custom small fw-bold">SITIO DE EMISIÓN (RECETA)</label>
-<select id="siteSelect" class="form-select"></select>
-</div>
-<div class="mb-3">
-<label class="form-label text-muted-custom small fw-bold">BÚSQUEDA DEL CONTENIDO</label>
-<input type="text" id="keyword" class="form-control" placeholder="Ej: Bleach Sennen Kessen-hen">
-</div>
-  
-<!-- NUEVOS AJUSTES DE PARRILLA / BLOQUE DESDE CAPTURA -->
-<div class="border-top border-secondary pt-3 mt-3">
-<h6 class="text-info mb-3">📅 Programación de Bloque (Opcional)</h6>
-<div class="row g-2">
-<div class="col-6">
-<label class="small text-muted-custom fw-bold">DÍA</label>
-<select id="progDia" class="form-select form-select-sm">
-<option value="">Cola General</option>
-<option value="Lunes">Lunes</option>
-<option value="Martes">Martes</option>
-<option value="Miercoles">Miércoles</option>
-<option value="Jueves">Jueves</option>
-<option value="Viernes">Viernes</option>
-<option value="Sabado">Sábado</option>
-<option value="Domingo">Domingo</option>
-</select>
-</div>
-<div class="col-3">
-<label class="small text-muted-custom fw-bold">INICIO</label>
-<input type="text" id="progInicio" class="form-control form-control-sm" placeholder="18:00">
-</div>
-<div class="col-3">
-<label class="small text-muted-custom fw-bold">FIN</label>
-<input type="text" id="progFin" class="form-control form-control-sm" placeholder="18:30">
-</div>
-</div>
-</div>
-  
-<div class="mt-4">
-<button id="btnStart" class="btn btn-neon w-100 py-2" onclick="startBot()">Lanzar Capturador Autónomo</button>
-</div>
-</div>
-  
-<!-- ESTADO B: Consola de Interacción (Solo para Administradores) -->
-<div id="botConsole" style="display:none;" class="mt-3 p-3 border border-info rounded bg-dark shadow-sm">
-<div class="d-flex align-items-center mb-3">
-<div class="spinner-border spinner-border-sm text-info me-2" id="botSpinner"></div>
-<h6 id="botQuestion" class="m-0 text-info">Inicializando proceso...</h6>
-</div>
-<div id="botOptions" class="d-grid gap-2"></div>
-<div id="botInputArea" class="mt-3" style="display:none;">
-<div class="input-group">
-<input type="text" id="botAnswer" class="form-control" placeholder="Ej: 12">
-<button class="btn btn-outline-info" onclick="sendAnswer()">Enviar</button>
-</div>
-</div>
-</div>
+                <!-- Programación (Solo visible si NO es YouTube) -->
+                <div id="progSettings" class="border-top border-secondary pt-3 mt-3">
+                    <h6 class="text-info mb-3">📅 Programación de Bloque (Opcional)</h6>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="small text-muted-custom fw-bold">DÍA</label>
+                            <select id="progDia" class="form-select form-select-sm">
+                                <option value="">Cola General</option>
+                                <option value="Lunes">Lunes</option>
+                                <option value="Martes">Martes</option>
+                                <option value="Miercoles">Miércoles</option>
+                                <option value="Jueves">Jueves</option>
+                                <option value="Viernes">Viernes</option>
+                                <option value="Sabado">Sábado</option>
+                                <option value="Domingo">Domingo</option>
+                            </select>
+                        </div>
+                        <div class="col-3">
+                            <label class="small text-muted-custom fw-bold">INICIO</label>
+                            <input type="text" id="progInicio" class="form-control form-control-sm" placeholder="18:00">
+                        </div>
+                        <div class="col-3">
+                            <label class="small text-muted-custom fw-bold">FIN</label>
+                            <input type="text" id="progFin" class="form-control form-control-sm" placeholder="18:30">
+                        </div>
+                    </div>
+                </div>
 
-{% else %}
-<!-- Vista reducida para Espectadores -->
-<div class="text-center py-5">
-    <div class="fs-1 text-muted">🔒</div>
-    <h5 class="text-muted-custom mt-3">Modo Vista de Espectador</h5>
-    <p class="small text-muted">No tienes privilegios para interactuar con el bot o la cola. Pide acceso administrador para lanzar capturas.</p>
-</div>
-{% endif %}
+                <div class="mt-4">
+                    <button id="btnStart" class="btn btn-neon w-100 py-2" onclick="startBot()">Lanzar Proceso</button>
+                </div>
+            </div>
 
-</div>
-</div>
-  
-<!-- COLUMNA DERECHA: COLA DE REPRODUCCIÓN -->
-<div class="col-md-7">
-<div class="glass-card p-4">
-<div class="d-flex justify-content-between align-items-center mb-3">
-<h4 class="m-0">📋 Cola de Emisiones Activas</h4>
-<a href="/ver_listas" class="btn btn-sm btn-outline-secondary">Gestión de Listas</a>
-</div>
-<div class="table-responsive">
-<table class="table table-dark table-hover align-middle">
-<thead>
-<tr>
-<th>Título / Episodio</th>
-<th class="text-center">Duración</th>
-<th class="text-center">Parrilla / Bloque</th>
-<th class="text-center">Estado</th>
-</tr>
-</thead>
-<tbody>
-                            {% for item in playlist %}
-<tr>
-<td>
-<span class="fw-bold d-block text-truncate" style="max-width: 240px;">{{ item.titulo }}</span>
-<small class="text-info">
-                                        {% if item.clasificacion == 'SERIE' %}
-                                            📺 Episodio: {{ item.episodio }}
-                                        {% else %}
-                                            🎬 Película/Único
-                                        {% endif %}
-</small>
-</td>
-<td class="text-center small text-muted-custom font-monospace">
-<span class="js-duration" data-seconds="{{ item.duracion }}">--:--</span>
-</td>
-<td class="text-center">
-                                    {% if item.dia %}
-<span class="badge badge-scheduled d-block mb-1">📅 {{ item.dia }}</span>
-<small class="text-muted-custom font-monospace">{{ item.hora_inicio }} - {{ item.hora_fin }}</small>
+            <!-- ESTADO B: Consola de Interacción (Soporta Bot y API YouTube) -->
+            <div id="botConsole" style="display:none;" class="mt-3 p-3 border border-info rounded bg-dark shadow-sm">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="spinner-border spinner-border-sm text-info me-2" id="botSpinner"></div>
+                    <h6 id="botQuestion" class="m-0 text-info">Inicializando...</h6>
+                </div>
+                <div id="botOptions" class="d-grid gap-2">
+                    <!-- Aquí se inyectan los botones de resultados o respuestas -->
+                </div>
+                <div id="botInputArea" class="mt-3" style="display:none;">
+                    <div class="input-group">
+                        <input type="text" id="botAnswer" class="form-control" placeholder="Ej: 12">
+                        <button class="btn btn-outline-info" onclick="sendAnswer()">Enviar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- COLUMNA DERECHA: COLA -->
+    <div class="col-md-7">
+        <div class="glass-card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 class="m-0">📋 Cola de Emisiones Activas</h4>
+                <a href="/ver_listas" class="btn btn-sm btn-outline-secondary">Gestión de Listas</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-dark table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Título / Episodio</th>
+                            <th class="text-center">Duración</th>
+                            <th class="text-center">Parrilla / Bloque</th>
+                            <th class="text-center">Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in playlist %}
+                        <tr>
+                            <td>
+                                <span class="fw-bold d-block text-truncate" style="max-width: 240px;">{{ item.titulo }}</span>
+                                <small class="text-info">
+                                    {% if item.clasificacion == 'SERIE' %}
+                                        📺 Episodio: {{ item.episodio }}
                                     {% else %}
-<span class="badge badge-queue d-block">📦 Cola Fallback</span>
+                                        🎬 Película/Único
                                     {% endif %}
-</td>
-<td class="text-center">
-                                    {% if item.visto == 1 %}
-<span class="badge badge-visto">✓ Consumido</span>
-                                    {% else %}
-<span class="badge badge-pendiente">⌛ En Espera</span>
-                                    {% endif %}
-</td>
-</tr>
-                            {% endfor %}
-</tbody>
-</table>
+                                </small>
+                            </td>
+                            <td class="text-center small text-muted-custom font-monospace">
+                                <span class="js-duration" data-seconds="{{ item.duracion }}">--:--</span>
+                            </td>
+                            <td class="text-center">
+                                {% if item.dia %}
+                                <span class="badge badge-scheduled d-block mb-1">📅 {{ item.dia }}</span>
+                                <small class="text-muted-custom font-monospace">{{ item.hora_inicio }} - {{ item.hora_fin }}</small>
+                                {% else %}
+                                <span class="badge badge-queue d-block">📦 Cola Fallback</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if item.visto == 1 %}
+                                <span class="badge badge-visto">✓ Consumido</span>
+                                {% else %}
+                                <span class="badge badge-pendiente">⌛ En Espera</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
-</div>
-</div>
-</div>
-  
+
 <script>
+// Formateador de segundos a HH:MM:SS
 function formatDurations() {
-document.querySelectorAll('.js-duration').forEach(el => {
-const totalSeconds = parseInt(el.getAttribute('data-seconds'), 10) || 0;
-if (totalSeconds === 0) {
-el.innerText = "Calculando...";
-return;
-                }
-const hrs = Math.floor(totalSeconds / 3600);
-const mins = Math.floor((totalSeconds % 3600) / 60);
-const secs = totalSeconds % 60;
-if (hrs > 0) {
-el.innerText = `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-                } else {
-el.innerText = `${mins}:${secs.toString().padStart(2, '0')}`;
-                }
-            });
-        }
-  
-async function loadSites() {
-try {
-const res = await fetch('/api/sites');
-const data = await res.json();
-const select = document.getElementById('siteSelect');
-if(select) {
-if (data.sites && data.sites.length > 0) {
-select.innerHTML = data.sites.map(s => `<option value="${s}">${s}</option>`).join('');
-                } else {
-select.innerHTML = '<option value="">No hay recetas</option>';
-                }
+    document.querySelectorAll('.js-duration').forEach(el => {
+        const totalSeconds = parseInt(el.getAttribute('data-seconds'), 10) || 0;
+        if (totalSeconds === 0) { el.innerText = "Calculando..."; return; }
+        const hrs = Math.floor(totalSeconds / 3600);
+        const mins = Math.floor((totalSeconds % 3600) / 60);
+        const secs = totalSeconds % 60;
+        el.innerText = hrs > 0 ? `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}` : `${mins}:${secs.toString().padStart(2, '0')}`;
+    });
 }
-            } catch (e) { console.error("Error sites:", e); }
-        }
-  
-async function startBot() {
-const site = document.getElementById('siteSelect').value;
-const kw = document.getElementById('keyword').value;
-if(!kw) return alert("Escribe el nombre del anime o película");
-  
-const dia = document.getElementById('progDia').value;
-const horaInicio = document.getElementById('progInicio').value;
-const horaFin = document.getElementById('progFin').value;
-  
-let bodyParams = `dominio=${site}&keyword=${kw}`;
-if(dia) bodyParams += `&dia=${dia}`;
-if(horaInicio) bodyParams += `&hora_inicio=${horaInicio}`;
-if(horaFin) bodyParams += `&hora_fin=${horaFin}`;
-  
-await fetch('/add_content', {
-method: 'POST',
-headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-body: bodyParams
-            });
-  
-document.getElementById('initSearch').style.display = 'none';
-document.getElementById('botConsole').style.display = 'block';
-startPolling();
-        }
-  
-async function sendSimpleAnswer(val) {
-await fetch('/api/bot_answer', {
-method: 'POST',
-headers: {'Content-Type': 'application/json'},
-body: JSON.stringify({ respuesta: val })
-            });
-        }
-  
-async function sendAnswer() {
-const resp = document.getElementById('botAnswer').value;
-if(!resp) return;
-await fetch('/api/bot_answer', {
-method: 'POST',
-headers: {'Content-Type': 'application/json'},
-body: JSON.stringify({ respuesta: resp })
-            });
-document.getElementById('botAnswer').value = '';
-        }
-  
-async function startPolling() {
-setInterval(async () => {
-try {
-const res = await fetch('/api/bot_status');
-const state = await res.json();
-const qText = document.getElementById('botQuestion');
-const options = document.getElementById('botOptions');
-const inputArea = document.getElementById('botInputArea');
-const spinner = document.getElementById('botSpinner');
-  
-if(!qText) return;
 
-if(state.estado === 'STARTING') {
-spinner.style.display = 'inline-block';
-qText.innerText = state.message || "🤖 El bot se está despertando...";
-options.innerHTML = '';
-inputArea.style.display = 'none';
-return;
-                    }
-  
-if(state.estado === 'SELECT_SHOW' && state.resultados) {
-spinner.style.display = 'none';
-qText.innerText = "🔍 Resultados encontrados. Selecciona uno:";
-options.innerHTML = state.resultados.map((r, i) =>
-`<button class="btn btn-sm btn-outline-light text-start mb-1 w-100" onclick="sendSimpleAnswer('${i+1}')">${i+1}. ${r.text}</button>`
-                        ).join('');
-inputArea.style.display = 'none';
-                    }
-else if(state.estado === 'SELECT_TYPE') {
-spinner.style.display = 'none';
-qText.innerText = `❓ ¿"${state.titulo || 'El show'}" es Serie o Película?`;
-options.innerHTML = `
-                            <div class="d-flex gap-2">
-                                <button class="btn btn-neon w-50" onclick="sendSimpleAnswer('S')">📺 Serie</button>
-                                <button class="btn btn-outline-light w-50" onclick="sendSimpleAnswer('P')">🎬 Película/OVA</button>
-                            </div>
-                        `;
-inputArea.style.display = 'none';
-                    }
-else if(state.estado === 'SELECT_EPISODE') {
-spinner.style.display = 'none';
-const total = state.total || '?';
-qText.innerText = `🔢 Indica el capítulo para ${state.titulo || 'el show'} (Total: ${total}):`;
-if(state.total && state.total <= 50) {
-let buttons = '';
-for(let i = 1; i <= state.total; i++) {
-buttons += `<button class="btn btn-sm btn-outline-light m-1" onclick="sendSimpleAnswer('${i}')">${i}</button>`;
-                            }
-options.innerHTML = `<div class="d-flex flex-wrap justify-content-center">${buttons}</div>`;
-                        } else {
-options.innerHTML = `<p class="text-muted small text-center">Demasiados episodios. Escribe el número abajo.</p>`;
-                        }
-inputArea.style.display = 'block';
-                    }
-else if(state.estado === 'IDLE') {
-spinner.style.display = 'none';
-qText.innerText = "✅ ¡Captura completada con éxito!";
-options.innerHTML = '<button class="btn btn-success w-100" onclick="location.reload()">Nueva Búsqueda</button>';
-inputArea.style.display = 'none';
-                    }
-else if(state.estado === 'ERROR') {
-spinner.style.display = 'none';
-qText.innerText = "❌ Error: " + (state.message || "Ocurrió un problema");
-options.innerHTML = '<button class="btn btn-danger w-100" onclick="location.reload()">Reintentar</button>';
-inputArea.style.display = 'none';
-                    }
-else {
-spinner.style.display = 'inline-block';
-qText.innerText = "🤖 El bot está navegando...";
-options.innerHTML = '';
-inputArea.style.display = 'none';
-                    }
-                } catch (e) {
-console.error("Polling error:", e);
-                }
-            }, 2000);
+// Carga de sitios integrando YouTube
+async function loadSites() {
+    try {
+        const res = await fetch('/api/sites');
+        const data = await res.json();
+        const select = document.getElementById('siteSelect');
+        let options = `<option value="youtube">📺 YouTube (Búsqueda Instantánea)</option>`;
+        if (data.sites) {
+            options += data.sites.map(s => `<option value="${s}">${s}</option>`).join('');
         }
-  
+        select.innerHTML = options;
+    } catch (e) { console.error("Error sites:", e); }
+}
+
+// Control de visibilidad de programación
+document.getElementById('siteSelect').addEventListener('change', function() {
+    const progSettings = document.getElementById('progSettings');
+    progSettings.style.display = this.value === 'youtube' ? 'none' : 'block';
+});
+
+async function startBot() {
+    const site = document.getElementById('siteSelect').value;
+    const kw = document.getElementById('keyword').value;
+    if(!kw) return alert("Escribe el nombre del contenido");
+
+    if (site === 'youtube') {
+        // --- FLUJO YOUTUBE (API) ---
+        document.getElementById('initSearch').style.display = 'none';
+        document.getElementById('botConsole').style.display = 'block';
+        
+        const qText = document.getElementById('botQuestion');
+        const options = document.getElementById('botOptions');
+        const spinner = document.getElementById('botSpinner');
+
+        spinner.style.display = 'inline-block';
+        qText.innerText = "🔍 Buscando en YouTube...";
+        options.innerHTML = '';
+        document.getElementById('botInputArea').style.display = 'none';
+
+        try {
+            const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(kw)}`);
+            const data = await res.json();
+            spinner.style.display = 'none';
+
+            if (data.videos && data.videos.length > 0) {
+                qText.innerText = "🎯 Resultados. Selecciona uno:";
+                options.innerHTML = data.videos.map((v, i) => {
+                    const m = Math.floor(v.duracion / 60);
+                    const s = v.duracion % 60;
+                    return `<button class="btn btn-sm btn-outline-light text-start mb-1 w-100" 
+                            onclick="addYoutubeVideo('${v.titulo.replace(/'/g, "\\'")}', '${v.url}', ${v.duracion})">
+                            ${i+1}. ${v.titulo} [${m}:${s.toString().padStart(2, '0')}]
+                            </button>`;
+                }).join('');
+            } else {
+                qText.innerText = "❌ No se encontraron videos.";
+                options.innerHTML = '<button class="btn btn-secondary w-100" onclick="location.reload()">Volver</button>';
+            }
+        } catch (e) {
+            spinner.style.display = 'none';
+            qText.innerText = "❌ Error de conexión.";
+        }
+    } else {
+        // --- FLUJO BOT (PUPPETEER) ---
+        const dia = document.getElementById('progDia').value;
+        const horaInicio = document.getElementById('progInicio').value;
+        const horaFin = document.getElementById('progFin').value;
+
+        let bodyParams = `dominio=${site}&keyword=${kw}`;
+        if(dia) bodyParams += `&dia=${dia}`;
+        if(horaInicio) bodyParams += `&hora_inicio=${horaInicio}`;
+        if(horaFin) bodyParams += `&hora_fin=${horaFin}`;
+
+        await fetch('/add_content', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: bodyParams
+        });
+
+        document.getElementById('initSearch').style.display = 'none';
+        document.getElementById('botConsole').style.display = 'block';
+        startPolling();
+    }
+}
+
+async function addYoutubeVideo(titulo, url, duracion) {
+    const res = await fetch('/api/youtube/add', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ titulo, url, duracion })
+    });
+    const data = await res.json();
+    if(data.status === 'success') {
+        alert(`✅ ${titulo} añadido a la cola.`);
+        location.reload();
+    } else {
+        alert(`❌ Error: ${data.message}`);
+    }
+}
+
+async function sendSimpleAnswer(val) {
+    await fetch('/api/bot_answer', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ respuesta: val })
+    });
+}
+
+async function sendAnswer() {
+    const resp = document.getElementById('botAnswer').value;
+    if(!resp) return;
+    await fetch('/api/bot_answer', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ respuesta: resp })
+    });
+    document.getElementById('botAnswer').value = '';
+}
+
+async function startPolling() {
+    setInterval(async () => {
+        try {
+            const res = await fetch('/api/bot_status');
+            const state = await res.json();
+            const qText = document.getElementById('botQuestion');
+            const options = document.getElementById('botOptions');
+            const inputArea = document.getElementById('botInputArea');
+            const spinner = document.getElementById('botSpinner');
+
+            if(state.estado === 'STARTING') {
+                spinner.style.display = 'inline-block';
+                qText.innerText = state.message || "🤖 Iniciando navegador...";
+                options.innerHTML = '';
+                inputArea.style.display = 'none';
+                return;
+            }
+
+            if(state.estado === 'SELECT_SHOW' && state.resultados) {
+                spinner.style.display = 'none';
+                qText.innerText = "🔍 Resultados encontrados:";
+                options.innerHTML = state.resultados.map((r, i) =>
+                    `<button class="btn btn-sm btn-outline-light text-start mb-1 w-100" onclick="sendSimpleAnswer('${i+1}')">${i+1}. ${r.text}</button>`
+                ).join('');
+                inputArea.style.display = 'none';
+            } else if(state.estado === 'SELECT_TYPE') {
+                spinner.style.display = 'none';
+                qText.innerText = `❓ ¿"${state.titulo || 'El show'}" es Serie o Película?`;
+                options.innerHTML = `<div class="d-flex gap-2">
+                    <button class="btn btn-neon w-50" onclick="sendSimpleAnswer('S')">📺 Serie</button>
+                    <button class="btn btn-outline-light w-50" onclick="sendSimpleAnswer('P')">🎬 Película/OVA</button>
+                </div>`;
+                inputArea.style.display = 'none';
+            } else if(state.estado === 'SELECT_EPISODE') {
+                spinner.style.display = 'none';
+                qText.innerText = `🔢 Indica el capítulo (Total: ${state.total || '?'}):`;
+                if(state.total && state.total <= 50) {
+                    let buttons = '';
+                    for(let i = 1; i <= state.total; i++) {
+                        buttons += `<button class="btn btn-sm btn-outline-light m-1" onclick="sendSimpleAnswer('${i}')">${i}</button>`;
+                    }
+                    options.innerHTML = `<div class="d-flex flex-wrap justify-content-center">${buttons}</div>`;
+                } else {
+                    options.innerHTML = `<p class="text-muted small text-center">Demasiados episodios. Escribe el número abajo.</p>`;
+                }
+                inputArea.style.display = 'block';
+            } else if(state.estado === 'IDLE') {
+                spinner.style.display = 'none';
+                qText.innerText = "✅ ¡Captura completada!";
+                options.innerHTML = '<button class="btn btn-success w-100" onclick="location.reload()">Nueva Búsqueda</button>';
+                inputArea.style.display = 'none';
+            } else if(state.estado === 'ERROR') {
+                spinner.style.display = 'none';
+                qText.innerText = "❌ Error: " + (state.message || "Ocurrió un problema");
+                options.innerHTML = '<button class="btn btn-danger w-100" onclick="location.reload()">Reintentar</button>';
+                inputArea.style.display = 'none';
+            } else {
+                spinner.style.display = 'inline-block';
+                qText.innerText = "🤖 El bot está trabajando...";
+                options.innerHTML = '';
+                inputArea.style.display = 'none';
+            }
+        } catch (e) { console.error("Polling error:", e); }
+    }, 2000);
+}
+
 window.onload = () => {
-loadSites();
-formatDurations();
-const serverIP = window.location.hostname;
-document.getElementById('stream-link').href = `http://${serverIP}:8888/novela`;
-        };
+    loadSites();
+    formatDurations();
+    const serverIP = window.location.hostname;
+    document.getElementById('stream-link').href = `http://${serverIP}:8888/novela`;
+};
 </script>
 </body>
 </html>

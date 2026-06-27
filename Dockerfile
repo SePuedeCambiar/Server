@@ -9,7 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # build-essential es clave aquí para que bcrypt se pueda compilar correctamente
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip python3-venv \
-    curl ffmpeg wget ca-certificates \
+    curl yt-dlp ffmpeg wget ca-certificates \
     xvfb \
     libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 libasound2 \
     build-essential \

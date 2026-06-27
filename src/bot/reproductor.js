@@ -4,7 +4,7 @@ const path = require('path');
 const Database = require('better-sqlite3');
 
 // ============================================================================
-// 1. CONFIGURACIÓN
+// 1. CONFIGURACIÓN DE BASE DE DATOS Y ESTADO
 // ============================================================================
 const ROOT_DIR = path.resolve(__dirname, '..', '..');
 const DB_PATH = path.join(ROOT_DIR, 'data', 'playlist.db');
@@ -45,7 +45,7 @@ async function esperarRespuesta(estado, preguntaTexto, datosExtra = {}) {
 }
 
 // ============================================================================
-// 2. FUNCIONES DE SOPORTE (LÓGICA ORIGINAL)
+// 2. FUNCIONES DE SOPORTE Y NAVEGACIÓN (COMPLETAS)
 // ============================================================================
 function cargarRecetaPorDominio(dominioBuscado) {
     const configsDir = path.join(ROOT_DIR, 'configs');
@@ -77,16 +77,7 @@ async function esperarIFramesExternos(page) {
         const tieneHostExterno = frames.some(f => {
             try {
                 const urlStr = f.url();
-                // Filtramos iframes pequeños o vacíos para no engañar al bot
-                if (!urlStr || urlStr.includes('about:blank') || urlStr.includes('cuevana') || urlStr.includes('jkanime')) return false;
-                
-                // Solo consideramos iframes que tengan un tamaño razonable (el reproductor)
-                const frameElement = f.frameElement();
-                if (frameElement) {
-                    const rect = f.frameElement().boundingBox(); // Esto es simplificado
-                    return true; 
-                }
-                return true;
+                return urlStr && !urlStr.includes('about:blank') && !urlStr.includes('cuevana') && !urlStr.includes('jkanime');
             } catch(e) { return false; }
         });
         if (tieneHostExterno) return true;
@@ -160,14 +151,13 @@ function generarUrlEpisodio(showUrl, capitulo, receta) {
 }
 
 // ============================================================================
-// EXTRACCIÓN AGRESIVA (LÓGICA EXACTA DEL BENCHMARK)
+// EXTRACCIÓN AGRESIVA (LÓGICA BENCHMARK)
 // ============================================================================
 async function activarVideoSandbox(page, rttHost, cpuScore) {
-    console.log("\n🎬 Iniciando Extracción Agresiva (Modo Benchmark)...");
+    console.log("\n🎬 Iniciando Extracción Agresiva...");
     const playSelectors = ['.vjs-big-play-button', '.play-button', '.btn-play', '[class*="play"]', 'video', '.jw-icon-display', '.plyr__control--overlaid'];
     const startTime = Date.now();
     
-    // Usamos la misma lógica de baseWait del benchmark
     let baseWait = rttHost ? Math.max(500, rttHost) : 2000;
     let k = 0;
 
@@ -179,7 +169,6 @@ async function activarVideoSandbox(page, rttHost, cpuScore) {
                 try {
                     if (frame.url().includes('about:blank')) continue;
 
-                    // 1. Robo directo de src
                     const src = await frame.evaluate(() => {
                         const v = document.querySelector('video');
                         return v ? v.src : null;
@@ -189,7 +178,6 @@ async function activarVideoSandbox(page, rttHost, cpuScore) {
                         return true;
                     }
 
-                    // 2. Inyección de JS (Mute + Play + Click Body)
                     await frame.evaluate(() => {
                         document.querySelectorAll('video').forEach(v => { v.muted = true; v.play().catch(() => {}); });
                         const body = document.body;
@@ -202,7 +190,6 @@ async function activarVideoSandbox(page, rttHost, cpuScore) {
                         }
                     });
 
-                    // 3. Clicks en selectores
                     for (const selector of playSelectors) {
                         try {
                             const el = await frame.$(selector);
@@ -217,7 +204,6 @@ async function activarVideoSandbox(page, rttHost, cpuScore) {
 
             if (global.videoCapturado) break;
 
-            // LÓGICA DE ESPERA DEL BENCHMARK: Rápida al inicio, lenta después
             let waitTime = k < 3 ? baseWait : Math.min(8000, Math.round(baseWait * Math.pow(1.2 + (cpuScore * 0.05), k - 2)));
             console.log(`⏳ Toque #${k} - Espera: ${waitTime}ms...`);
             await new Promise(r => setTimeout(r, waitTime));
@@ -228,13 +214,47 @@ async function activarVideoSandbox(page, rttHost, cpuScore) {
 }
 
 // ============================================================================
-// 3. ORQUESTADOR PRINCIPAL (LÓGICA ORIGINAL)
+// ORQUESTADOR PRINCIPAL
 // ============================================================================
 async function main() {
     const args = process.argv.slice(2);
+    
+    const ARG_ID = args.find(arg => arg.startsWith('--id='))?.split('=')[1];
     const ARG_DOMINIO = args.find(arg => arg.startsWith('--dominio='))?.split('=')[1];
     const ARG_KEYWORD = args.find(arg => arg.startsWith('--keyword='))?.split('=')[1];
     const ARG_HORA = args.find(arg => arg.startsWith('--hora='))?.split('=')[1] || null;
+
+    // MODO ACTUALIZACIÓN (Pre-fetch)
+    if (ARG_ID) {
+        console.log(`🔄 MODO ACTUALIZACIÓN: Refrescando enlace para ID ${ARG_ID}...`);
+        const row = db.prepare('SELECT * FROM contenidos WHERE id = ?').get(ARG_ID);
+        if (!row) { console.error("❌ ID no encontrado"); process.exit(1); }
+
+        const { browser, page } = await connect({
+            headless: MODO_INVISIBLE,
+            args: ["--start-maximized", "--no-sandbox"],
+            turnstile: true,
+            connectOption: { defaultViewport: null }
+        });
+        blindarNavegador(browser, page);
+        page.on('response', (res) => {
+            const url = res.url().toLowerCase();
+            if ((url.includes('.m3u8') || url.includes('.mp4')) && !url.includes('1xbet')) {
+                global.videoCapturado = res.url();
+            }
+        });
+        try {
+            await page.goto(row.url_base, { waitUntil: 'networkidle2', timeout: 60000 });
+            await esperarBypass(page);
+            await activarVideoSandbox(page, 800, 1.0);
+            if (global.videoCapturado) {
+                db.prepare('UPDATE contenidos SET url_final = ?, fecha_captura = CURRENT_TIMESTAMP WHERE id = ?')
+                  .run(global.videoCapturado, ARG_ID);
+                console.log(`✅ URL actualizada para ID ${ARG_ID}`);
+            }
+        } catch (e) { console.error(`❌ Error: ${e.message}`); }
+        finally { await browser.close(); process.exit(0); }
+    }
 
     if (!ARG_DOMINIO || !ARG_KEYWORD) {
         console.error("❌ Argumentos faltantes.");
@@ -243,11 +263,10 @@ async function main() {
 
     const startCPU = Date.now();
     for (let i = 0; i < 5000000; i++) { Math.sqrt(i); }
-    const cpuTime = Date.now() - startCPU;
-    const cpuScore = Math.max(1.0, cpuTime / 15);
+    const cpuScore = Math.max(1.0, (Date.now() - startCPU) / 15);
 
     console.log("======================================================");
-    console.log(`🤖 BOT INTERACTIVO BENCHMARK-ED | ${ARG_KEYWORD} en ${ARG_DOMINIO}`);
+    console.log(`🤖 BOT INTERACTIVO | ${ARG_KEYWORD} en ${ARG_DOMINIO}`);
     console.log("======================================================");
 
     const { browser, page } = await connect({
@@ -285,7 +304,6 @@ async function main() {
         const receta = cargarRecetaPorDominio(ARG_DOMINIO);
         if (!receta) throw new Error(`No se encontró receta para ${ARG_DOMINIO}`);
 
-        // --- PASO 1: BÚSQUEDA (SISTEMA ORIGINAL) ---
         let searchUrl = null;
         if (ARG_DOMINIO.includes('jkanime')) {
             searchUrl = `https://${ARG_DOMINIO}/buscar/${encodeURIComponent(ARG_KEYWORD)}`;
@@ -328,7 +346,6 @@ async function main() {
         const show = enlaces[seleccionIdx] || enlaces[0];
         const urlBaseFinal = show.href;
 
-        // --- PASO 2: FICHA DEL SHOW (ORIGINAL) ---
         await navegarYAbortar(page, urlBaseFinal, 'body', true);
         await esperarBypass(page);
 
@@ -347,8 +364,7 @@ async function main() {
             targetUrl = generarUrlEpisodio(urlBaseFinal, capituloElegido, receta);
         }
 
-        // --- PASO 3: CAPTURA FINAL (LÓGICA BENCHMARK) ---
-        console.log(`➡️  Navegando al video final: ${targetUrl}`);
+        console.log(`➡️ Navegando al video final: ${targetUrl}`);
         const selectorVideo = '.video-play, #play-button, video, .vjs-big-play-button';
         await navegarYAbortar(page, targetUrl, selectorVideo, true);
         await esperarBypass(page);
@@ -366,8 +382,6 @@ async function main() {
 
         await esperarIFramesExternos(page);
         const rttHost = await medirLatenciaHost(page);
-        
-        // EXTRACCIÓN AGRESIVA (Copia exacta del benchmark que funcionó)
         await activarVideoSandbox(page, rttHost, cpuScore);
 
         if (global.videoCapturado) {

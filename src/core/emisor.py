@@ -5,43 +5,27 @@ import sqlite3
 import logging
 import urllib.request
 import urllib.parse
-from threading import Thread, Event
+from threading import Thread, Event, Timer
 from datetime import datetime
 
 # ==============================================================================
 # CONFIGURACIÓN GLOBAL
 # ==============================================================================
 class Config:
-    # Sube dos niveles desde src/core/ para llegar a la raíz del proyecto
     BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     DB_PATH = os.path.join(BASE_DIR, "data", "playlist.db")
     LOG_FILE = os.path.join(BASE_DIR, "tv_system.log")
     FFMPEG_LOG = os.path.join(BASE_DIR, "ffmpeg_errors.log")
     COOKIES_FILE = os.path.join(BASE_DIR, "cookies.txt")
-    ALMACEN = "/dev/shm/almacen_tv"  # Disco en RAM para evitar desgaste de SSD/SD
+    ALMACEN = "/dev/shm/almacen_tv"
 
-    # Streaming
     RTMP_URL = "rtmp://mediamtx:1935/novela"
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
-    # MODO_EMISION: 'copy' (rápido, sin CPU) o 'transcode' (estandariza calidad)
     MODO_EMISION = 'copy'
-
-    # Parámetros para modo 'transcode'
     VIDEO_SCALE = "scale=1280:720,fps=25,format=yuv420p"
-    FFMPEG_TRANSCODE_PARAMS = [
-        "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-        "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k", "-f", "flv"
-    ]
-
-    # Parámetros para modo 'copy' - ARCHIVOS LOCALES
+    FFMPEG_TRANSCODE_PARAMS = ["-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k", "-f", "flv"]
     FFMPEG_COPY_PURE = ["-c:v", "copy", "-c:a", "copy", "-f", "flv"]
-
-    # Parámetros para modo 'copy' - STREAMS REMOTOS
-    FFMPEG_COPY_SMART = [
-        "-c:v", "copy", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k",
-        "-f", "flv"
-    ]
+    FFMPEG_COPY_SMART = ["-c:v", "copy", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-b:a", "128k", "-f", "flv"]
 
     @classmethod
     def preparar_entorno(cls):
@@ -51,19 +35,14 @@ class Config:
             try: os.remove(os.path.join(cls.ALMACEN, f))
             except Exception: pass
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] [%(levelname)s] %(message)s',
-    handlers=[logging.FileHandler(Config.LOG_FILE), logging.StreamHandler()]
-)
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(message)s', handlers=[logging.FileHandler(Config.LOG_FILE), logging.StreamHandler()])
 logger = logging.getLogger("TV_System")
 
 # ==============================================================================
-# GESTIÓN DE BASE DE DATOS (CON TIMEOUT PARA EVITAR LOCKS)
+# GESTIÓN DE BASE DE DATOS
 # ==============================================================================
 class PlaylistDB:
     def __init__(self):
-        # timeout=30 es la clave para evitar el error "database is locked"
         self.conn = sqlite3.connect(Config.DB_PATH, check_same_thread=False, timeout=30)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL;")
@@ -71,17 +50,9 @@ class PlaylistDB:
     def obtener_siguiente(self):
         cursor = self.conn.cursor()
         ahora_str = datetime.now().strftime("%H:%M")
-
-        # 1. Contenido programado
-        cursor.execute("""
-            SELECT * FROM contenidos
-            WHERE reproducido = 0 AND visto = 0 AND hora_programada IS NOT NULL AND hora_programada <= ?
-            ORDER BY hora_programada ASC LIMIT 1
-        """, (ahora_str,))
+        cursor.execute("SELECT * FROM contenidos WHERE reproducido = 0 AND visto = 0 AND hora_programada IS NOT NULL AND hora_programada <= ? ORDER BY hora_programada ASC LIMIT 1", (ahora_str,))
         res = cursor.fetchone()
         if res: return res
-
-        # 2. Cola general (Fallback)
         cursor.execute("SELECT * FROM contenidos WHERE reproducido = 0 AND visto = 0 AND hora_programada IS NULL ORDER BY id ASC LIMIT 1")
         return cursor.fetchone()
 
@@ -102,33 +73,24 @@ class Downloader:
     def descargar(self, video_data):
         url = video_data['url_final']
         video_id = video_data['id']
-
         if ".m3u8" in url:
             logger.info(f"[BG] Registrando marcador HLS para ID {video_id}")
-            try:
-                referer = video_data['url_base'] if video_data['url_base'] else f"https://{video_data['dominio']}/"
-            except Exception:
-                referer = "https://jkanime.net/"
-
-            if "cuevana" in referer or "tiktok" in url or "shopping" in url or "image" in url:
+            try: referer = video_data['url_base'] if video_data['url_base'] else f"https://{video_data['dominio']}/"
+            except: referer = "https://jkanime.net/"
+            
+            if any(k in referer or k in url for k in ["cuevana", "tiktok", "shopping", "image"]):
                 safe_url = urllib.parse.quote(url, safe='')
                 safe_referer = urllib.parse.quote(referer, safe='')
                 proxied_url = f"http://localhost:9001/proxy/manifest.m3u8?url={safe_url}&referer={safe_referer}"
-                logger.info(f"[BG] Re-enrutando HLS a través de proxy local...")
             else:
                 proxied_url = url
-
             with open(f"{self.almacen}/next_{video_id}.url", "w") as f:
                 f.write(f"{proxied_url}\n{referer}")
             return True
 
         logger.info(f"[BG] Descargando MP4 para ID {video_id} vía yt-dlp...")
         destino = f"{self.almacen}/next_{video_id}.mp4"
-        comando = [
-            "yt-dlp", "--impersonate", "chrome", "--cookies", Config.COOKIES_FILE,
-            "-f", "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[ext=mp4]/best",
-            "--no-playlist", "--merge-output-format", "mp4", "-o", destino, url
-        ]
+        comando = ["yt-dlp", "--impersonate", "chrome", "--cookies", Config.COOKIES_FILE, "-f", "bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[ext=mp4]/best", "--no-playlist", "--merge-output-format", "mp4", "-o", destino, url]
         try:
             subprocess.run(comando, capture_output=True, check=True)
             return os.path.exists(destino) and os.path.getsize(destino) > 0
@@ -149,19 +111,18 @@ class Streamer:
         if "localhost:9001/proxy" in url:
             query_params = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
             if 'url' in query_params: url_a_probar = query_params['url'][0]
-
         headers = {"User-Agent": Config.USER_AGENT, "Referer": referer}
         try:
             req = urllib.request.Request(url_a_probar, headers=headers, method='HEAD')
             with urllib.request.urlopen(req, timeout=5) as resp:
                 if resp.status == 200: return True
-        except Exception:
+        except:
             try:
                 req = urllib.request.Request(url_a_probar, headers=headers)
                 req.add_header('Range', 'bytes=0-100')
                 with urllib.request.urlopen(req, timeout=5) as resp:
                     if resp.status in [200, 206]: return True
-            except Exception: pass
+            except: pass
         return False
 
     def ejecutar_recaptura_autonoma(self, video_data):
@@ -173,13 +134,12 @@ class Streamer:
             return proc.returncode == 0
         except Exception as e:
             logger.error(f"❌ Error en recaptura: {e}")
-        return False
+            return False
 
     def emitir(self, video_data):
         video_id = video_data['id']
         url_file = f"{Config.ALMACEN}/next_{video_id}.mp4"
         url_meta = f"{Config.ALMACEN}/next_{video_id}.url"
-
         if os.path.exists(url_meta) or ".m3u8" in video_data['url_final']:
             stream_url = video_data['url_final']
             referer = video_data['url_base'] if video_data['url_base'] else f"https://{video_data['dominio']}/"
@@ -187,25 +147,20 @@ class Streamer:
                 with open(url_meta, "r") as f:
                     lines = f.read().splitlines()
                     stream_url, referer = lines[0], lines[1]
-
             if not self.verificar_salud_url(stream_url, referer):
-                if not self.ejecutar_recaptura_autonoma(video_data):
-                    return False
-                # Recargar datos actualizados de la DB tras la recaptura
+                if not self.ejecutar_recaptura_autonoma(video_data): return False
                 cursor = self.db.conn.cursor()
                 cursor.execute("SELECT * FROM contenidos WHERE id = ?", (video_id,))
                 row = cursor.fetchone()
                 if row:
                     video_data = dict(zip([col[0] for col in cursor.description], row))
                     stream_url = video_data['url_final']
-
             logger.info(f"🎬 TRANSMITIENDO: {stream_url}")
             if Config.MODO_EMISION == 'copy':
                 comando = ["ffmpeg", "-y", "-re", "-thread_queue_size", "4096", "-protocol_whitelist", "file,http,https,tcp,tls,crypto,data", "-extension_picky", "0", "-allowed_extensions", "ts,m3u8,m3u,image,png,jpg,txt,mp4", "-allowed_segment_extensions", "ts,m3u8,m3u,image,png,jpg,txt,mp4", "-fflags", "+genpts+discardcorrupt", "-referer", referer, "-user_agent", Config.USER_AGENT, "-i", stream_url, *Config.FFMPEG_COPY_SMART, self.rtmp_url]
             else:
                 comando = ["ffmpeg", "-y", "-re", "-thread_queue_size", "4096", "-protocol_whitelist", "file,http,https,tcp,tls,crypto,data", "-extension_picky", "0", "-allowed_extensions", "ts,m3u8,m3u,image,png,jpg,txt,mp4", "-allowed_segment_extensions", "ts,m3u8,m3u,image,png,jpg,txt,mp4", "-fflags", "+genpts+discardcorrupt", "-referer", referer, "-user_agent", Config.USER_AGENT, "-i", stream_url, "-vf", Config.VIDEO_SCALE, *Config.FFMPEG_TRANSCODE_PARAMS, self.rtmp_url]
             return self._ejecutar_ffmpeg(comando, url_meta)
-
         elif os.path.exists(url_file):
             logger.info(f"🎬 TRANSMITIENDO ARCHIVO RAM: {url_file}")
             if Config.MODO_EMISION == 'copy':
@@ -237,6 +192,26 @@ class TVExecutor:
         self.streamer = Streamer(self.db)
         self.stop_event = Event()
         self.is_downloading = False
+        self.prefetch_timer = None
+
+    def programar_actualizacion_siguiente(self, duracion_actual):
+        if self.prefetch_timer:
+            self.prefetch_timer.cancel()
+        espera = max(1, duracion_actual - 60)
+        def tarea_actualizacion():
+            siguiente = self.db.obtener_siguiente()
+            if siguiente:
+                video_id = siguiente['id']
+                logger.info(f"⏰ PRE-FETCH: Actualizando enlace para el próximo video (ID: {video_id})")
+                script_bot = os.path.join(Config.BASE_DIR, "src", "bot", "reproductor.js")
+                comando = ["node", script_bot, f"--id={video_id}"]
+                try:
+                    subprocess.run(comando, capture_output=True, timeout=150)
+                    logger.info(f"✅ Pre-fetch completado para ID {video_id}")
+                except Exception as e:
+                    logger.error(f"❌ Error en pre-fetch: {e}")
+        self.prefetch_timer = Timer(espera, tarea_actualizacion)
+        self.prefetch_timer.start()
 
     def monitor_progress(self, video_id, duration):
         time.sleep(duration * 0.8)
@@ -263,8 +238,9 @@ class TVExecutor:
                 continue
             if not os.path.exists(f"{Config.ALMACEN}/next_{actual['id']}.mp4") and not os.path.exists(f"{Config.ALMACEN}/next_{actual['id']}.url"):
                 self.downloader.descargar(actual)
-            duration = actual.get('duracion', 1200) if isinstance(actual, dict) else 1200
-            Thread(target=self.monitor_progress, args=(actual['id'], duration), daemon=True).start()
+            duracion = actual.get('duracion', 1200) if isinstance(actual, dict) else 1200
+            self.programar_actualizacion_siguiente(duracion)
+            Thread(target=self.monitor_progress, args=(actual['id'], duracion), daemon=True).start()
             if self.streamer.emitir(actual):
                 logger.info(f"✅ Finalizado: {actual['titulo']}")
                 self.db.marcar_reproducido(actual['id'])
