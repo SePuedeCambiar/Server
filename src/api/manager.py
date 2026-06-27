@@ -10,7 +10,6 @@ import jinja2
 import logging
 import requests
 import urllib.parse
-import secrets
 import bcrypt
 import jwt
 from datetime import datetime, timedelta
@@ -69,13 +68,14 @@ def obtener_usuario_ui(request: Request):
 proceso_grabador = None
 
 # ==============================================================================
-# CONFIGURACIÓN DE RUTAS
+# CONFIGURACIÓN DE RUTAS Y CONSTANTES
 # ==============================================================================
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DB_PATH = os.path.join(BASE_DIR, 'data', 'playlist.db')
 CONFIGS_DIR = os.path.join(BASE_DIR, 'configs')
 STATE_FILE = os.path.join(CONFIGS_DIR, 'bot_state.json')
 BOT_SCRIPT_PATH = os.path.join(BASE_DIR, 'src', 'bot', 'reproductor.js')
+COOKIES_FILE = os.path.join(BASE_DIR, 'cookies.txt')
 
 os.makedirs(CONFIGS_DIR, exist_ok=True)
 
@@ -120,6 +120,7 @@ def inicializar_usuarios():
             conn.execute("INSERT INTO usuarios (username, password_hash, rol) VALUES (?, ?, ?)",
                          ("admin", hashed, 'admin'))
             conn.commit()
+            logger.info("✅ Administrador creado por defecto.")
     except Exception as e:
         logger.error(f"Error inicializando usuarios: {e}")
     finally:
@@ -152,12 +153,64 @@ async def logout_action():
     return response
 
 # ==============================================================================
-# 4. API DE YOUTUBE (VERSION JSON ESTABLE)
+# SISTEMA DE ADMINISTRACIÓN DE USUARIOS (RBAC)
+# ==============================================================================
+@app.get("/admin/usuarios", response_class=HTMLResponse)
+async def admin_users_page(request: Request, user: dict = Depends(obtener_usuario_ui)):
+    if user['rol'] != 'admin':
+        return HTMLResponse(content="Acceso denegado: Se requiere rol de Admin", status_code=403)
+    
+    conn = get_db_connection()
+    usuarios = []
+    if conn:
+        usuarios = [dict(row) for row in conn.execute("SELECT id, username, rol FROM usuarios").fetchall()]
+        conn.close()
+    
+    return templates.TemplateResponse(request, "usuarios.html", {"usuarios": usuarios, "current_user": user})
+
+@app.post("/admin/usuarios/crear")
+async def create_user(
+    username: str = Form(...), 
+    password: str = Form(...), 
+    rol: str = Form(...), 
+    user: dict = Depends(obtener_usuario_actual)
+):
+    if user['rol'] != 'admin':
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
+    hashed = get_password_hash(password)
+    conn = get_db_connection()
+    try:
+        conn.execute("INSERT INTO usuarios (username, password_hash, rol) VALUES (?, ?, ?)", (username, hashed, rol))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="El nombre de usuario ya existe")
+    finally:
+        conn.close()
+    return RedirectResponse(url="/admin/usuarios", status_code=303)
+
+@app.get("/admin/usuarios/eliminar/{user_id}")
+async def delete_user(user_id: int, user: dict = Depends(obtener_usuario_actual)):
+    if user['rol'] != 'admin':
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
+    conn = get_db_connection()
+    check_user = conn.execute("SELECT username FROM usuarios WHERE id = ?", (user_id,)).fetchone()
+    if check_user and check_user['username'] == user['username']:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No puedes eliminar tu propio usuario actual")
+        
+    conn.execute("DELETE FROM usuarios WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    return RedirectResponse(url="/admin/usuarios", status_code=303)
+
+# ==============================================================================
+# 4. API DE YOUTUBE (VERSIÓN JSON ESTABLE + RECEPTOR DE COOKIES)
 # ==============================================================================
 @app.get("/api/youtube/search")
 async def search_youtube(q: str, user: dict = Depends(obtener_usuario_actual)):
     try:
-        # Usamos la Variante #2 del test (JSON Flat Playlist) que es la más estable
         comando = ["yt-dlp", f"ytsearch10:{q}", "--dump-json", "--flat-playlist"]
         resultado = subprocess.run(comando, capture_output=True, text=True, check=True, timeout=30)
         
@@ -168,7 +221,6 @@ async def search_youtube(q: str, user: dict = Depends(obtener_usuario_actual)):
             if not linea.strip(): continue
             try:
                 datos = json.loads(linea)
-                # Extraemos los datos clave del JSON de yt-dlp
                 titulo = datos.get('title', 'Sin título')
                 v_id = datos.get('id', 'N/A')
                 duracion = datos.get('duration', 0)
@@ -199,6 +251,28 @@ async def add_youtube_video(request: Request, user: dict = Depends(obtener_usuar
         conn.close()
         return {"status": "success"}
     except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/youtube/cookies")
+async def upload_youtube_cookies(request: Request, user: dict = Depends(obtener_usuario_actual)):
+    """ Recibe cookies estructuradas en Netscape desde la extensión y las guarda """
+    try:
+        if user['rol'] != 'admin':
+            raise HTTPException(status_code=403, detail="No autorizado")
+            
+        data = await request.json()
+        cookies_text = data.get("cookies")
+        
+        if not cookies_text:
+            return {"status": "error", "message": "No se recibieron cookies en el cuerpo."}
+
+        with open(COOKIES_FILE, "w", encoding="utf-8") as f:
+            f.write(cookies_text)
+        
+        logger.info("🍪 Cookies de YouTube importadas exitosamente desde la extensión.")
+        return {"status": "success", "message": "Archivo cookies.txt actualizado."}
+    except Exception as e:
+        logger.error(f"Error guardando cookies: {e}")
         return {"status": "error", "message": str(e)}
 
 # ==============================================================================
@@ -239,6 +313,19 @@ async def bot_answer(request: Request, user: dict = Depends(obtener_usuario_actu
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+@app.post("/api/upload_recipe")
+async def upload_recipe(request: Request):
+    try:
+        data = await request.json()
+        dominio = data.get("dominio")
+        if not dominio: return {"status": "error", "message": "Dominio obligatorio."}
+        file_path = os.path.join(CONFIGS_DIR, f"{dominio}_receta.json")
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        return {"status": "success", "message": f"Receta de {dominio} guardada."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 # ==============================================================================
 # 6. PANEL DE CONTROL WEB
 # ==============================================================================
@@ -263,7 +350,14 @@ async def ver_listas(request: Request, user: dict = Depends(obtener_usuario_ui))
     return templates.TemplateResponse(request, "listas.html", {"playlist": playlist, "user": user})
 
 @app.post("/add_content")
-async def add_content(dominio: str = Form(...), keyword: str = Form(...), user: dict = Depends(obtener_usuario_actual)):
+async def add_content(
+    dominio: str = Form(...), 
+    keyword: str = Form(...), 
+    dia: str = Form(None),
+    hora_inicio: str = Form(None),
+    hora_fin: str = Form(None),
+    user: dict = Depends(obtener_usuario_actual)
+):
     if user['rol'] != 'admin': raise HTTPException(status_code=403, detail="No autorizado")
     global proceso_grabador
     if proceso_grabador is not None and proceso_grabador.poll() is None:
@@ -273,6 +367,11 @@ async def add_content(dominio: str = Form(...), keyword: str = Form(...), user: 
         json.dump({"estado": "STARTING", "message": "🤖 Despertando navegador..."}, f, indent=2)
 
     comando = ["node", BOT_SCRIPT_PATH, f"--dominio={dominio}", f"--keyword={keyword}"]
+    if dia:
+        comando.append(f"--dia={dia}")
+    if hora_inicio:
+        comando.append(f"--hora={hora_inicio}")
+
     try:
         proceso_grabador = subprocess.Popen(comando, env=os.environ.copy())
         return HTMLResponse(content="🚀 Bot iniciado.", status_code=200)
