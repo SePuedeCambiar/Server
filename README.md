@@ -27,3 +27,8 @@ admin_password_2024
 
 El programa requiere de usar una extension de chrome para poder añadir mas sitios en caso de que el usuario lo requiera
 https://github.com/SePuedeCambiar/extension
+
+Problemas actuales
+*En ciertas paginas no funciona bien el sistema de series.
+*En ciertas paginas no funciona bien el sistema de captura de videos
+*Las listas pueden caducar antes de tiempo por lo que se requiere un sistema para esto
